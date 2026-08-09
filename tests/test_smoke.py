@@ -23,3 +23,10 @@ def test_main_window_opens(application) -> None:
     assert window.isVisible()
     assert window.windowTitle() == "Work Scheduler"
     assert window.centralWidget() is not None
+
+
+def test_main_window_reads_from_the_database(application) -> None:
+    """Proves the window is wired to a real database, not just drawn."""
+    _, window = application
+
+    assert "pracownicy: 0" in window.database_summary()
