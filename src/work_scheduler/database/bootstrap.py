@@ -1,5 +1,3 @@
-"""Bringing the database up to date when the application starts."""
-
 import logging
 from pathlib import Path
 

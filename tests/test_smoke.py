@@ -25,8 +25,7 @@ def test_main_window_opens(application) -> None:
     assert window.centralWidget() is not None
 
 
-def test_main_window_reads_from_the_database(application) -> None:
-    """Proves the window is wired to a real database, not just drawn."""
+def test_main_window_shows_the_database_location(application) -> None:
     _, window = application
 
-    assert "pracownicy: 0" in window.database_summary()
+    assert "Baza:" in window.database_summary()

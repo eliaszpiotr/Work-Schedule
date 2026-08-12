@@ -32,6 +32,11 @@ work_scheduler = [
     "migrations/env.py",
     "migrations/script.py.mako",
     "migrations/versions/*.py",
+    "ui/assets/fonts/*.ttf",
+    "ui/assets/icons/*.svg",
+    "ui/assets/app_icon.png",
+    "ui/assets/app_icon.ico",
+    "ui/assets/app_icon.icns",
 ]
 
 [tool.pytest.ini_options]
