@@ -13,19 +13,24 @@ from PySide6.QtWidgets import (
 from sqlalchemy.orm import Session, sessionmaker
 
 from work_scheduler.config import AppConfig
-from work_scheduler.services import EmployeeService
-from work_scheduler.ui.components import EmptyState
+from work_scheduler.services import (
+    EmployeeService,
+    OpeningHoursService,
+    ScheduleService,
+    ShiftService,
+)
 from work_scheduler.ui.employees import EmployeesView
 from work_scheduler.ui.icons import load_icon
+from work_scheduler.ui.schedules.schedules_page import SchedulesPage
+from work_scheduler.ui.settings import SettingsView
 from work_scheduler.ui.theme import METRICS, ThemeManager
 
 PAGES = (
-    ("Grafik", "calendar-days"),
+    ("Grafiki", "calendar-days"),
     ("Pracownicy", "users"),
-    ("Raporty", "chart-column"),
     ("Ustawienia", "settings"),
 )
-EMPLOYEES_PAGE = 1
+SCHEDULES_PAGE = 0
 
 
 class MainWindow(QMainWindow):
@@ -45,7 +50,17 @@ class MainWindow(QMainWindow):
         self.resize(1180, 760)
         self.setMinimumSize(880, 560)
 
-        self._employees = EmployeesView(EmployeeService(session_factory), self._theme.palette)
+        palette = self._theme.palette
+        self._schedules = SchedulesPage(
+            ScheduleService(session_factory),
+            EmployeeService(session_factory),
+            OpeningHoursService(session_factory),
+            ShiftService(session_factory),
+            palette,
+        )
+        self._employees = EmployeesView(EmployeeService(session_factory), palette)
+        self._settings = SettingsView(OpeningHoursService(session_factory), palette)
+
         self._build()
         self._theme.changed.connect(self._refresh_icons)
 
@@ -58,16 +73,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._sidebar())
         layout.addWidget(self._pages, stretch=1)
 
-        self._pages.addWidget(EmptyState("Grafik", "Edytor grafiku powstanie w kolejnym etapie."))
+        self._pages.addWidget(self._schedules)
         self._pages.addWidget(self._employees)
-        self._pages.addWidget(
-            EmptyState("Raporty", "Zestawienia godzin pojawią się po zbudowaniu grafiku.")
-        )
-        self._pages.addWidget(EmptyState("Ustawienia", "Na razie nie ma czego ustawiać."))
+        self._pages.addWidget(self._settings)
 
-        self._navigation.currentRowChanged.connect(self._pages.setCurrentIndex)
-        # Employees is the only finished screen, so the application opens on it.
-        self._navigation.setCurrentRow(EMPLOYEES_PAGE)
+        self._navigation.currentRowChanged.connect(self._show_page)
+        self._navigation.setCurrentRow(SCHEDULES_PAGE)
 
         self.setCentralWidget(root)
         self.statusBar().showMessage(self.database_summary())
@@ -109,10 +120,19 @@ class MainWindow(QMainWindow):
             item.setSizeHint(QSize(0, METRICS.nav_item_height + METRICS.space_1))
             self._navigation.addItem(item)
 
+    def _show_page(self, row: int) -> None:
+        """Screens read from the database on arrival, so edits elsewhere are never stale."""
+        self._pages.setCurrentIndex(row)
+        page = self._pages.widget(row)
+        if hasattr(page, "reload"):
+            page.reload()
+
     def _refresh_icons(self) -> None:
-        colour = self._theme.palette.text_secondary
+        palette = self._theme.palette
         for row, (_, icon) in enumerate(PAGES):
-            self._navigation.item(row).setIcon(load_icon(icon, colour))
+            self._navigation.item(row).setIcon(load_icon(icon, palette.text_secondary))
+        for page in (self._schedules, self._employees, self._settings):
+            page.apply_palette(palette)
 
     def database_summary(self) -> str:
         return f"Baza: {self._config.database_path}"

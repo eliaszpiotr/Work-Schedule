@@ -8,6 +8,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from work_scheduler.database.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from work_scheduler.database.models.opening_hours import (
+        ScheduleDayOverride,
+        ScheduleOpeningHours,
+    )
     from work_scheduler.database.models.schedule_employee import ScheduleEmployee
 
 
@@ -36,4 +40,16 @@ class Schedule(Base, TimestampMixin):
         cascade="all, delete-orphan",
         passive_deletes=True,
         order_by="ScheduleEmployee.display_order",
+    )
+    opening_hours: Mapped[list["ScheduleOpeningHours"]] = relationship(
+        back_populates="schedule",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="ScheduleOpeningHours.weekday",
+    )
+    day_overrides: Mapped[list["ScheduleDayOverride"]] = relationship(
+        back_populates="schedule",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="ScheduleDayOverride.day",
     )

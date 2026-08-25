@@ -27,6 +27,9 @@ class Palette:
     on_accent: str
     success: str
     warning: str
+    warning_surface: str
+    holiday_surface: str
+    danger_surface: str
     danger: str
     danger_hover: str
 
@@ -47,6 +50,9 @@ LIGHT = Palette(
     on_accent="#FFFFFF",
     success="#3F8F5B",
     warning="#B07B24",
+    warning_surface="#FBF1DA",
+    holiday_surface="#E4EEFA",
+    danger_surface="#FBE7E5",
     danger="#C2453C",
     danger_hover="#A93A32",
 )
@@ -68,6 +74,9 @@ DARK = Palette(
     on_accent="#1E1E1E",
     success="#68B183",
     warning="#D3A353",
+    warning_surface="#3B3018",
+    holiday_surface="#1F2E42",
+    danger_surface="#3E2422",
     danger="#E0736B",
     danger_hover="#E88880",
 )
@@ -100,6 +109,14 @@ class Metrics:
     table_row_height: int = 38
     sidebar_width: int = 248
     dialog_width: int = 460
+    weekday_label_width: int = 110
+    time_field_width: int = 90
+    people_list_height: int = 180
+    status_filter_width: int = 180
+    calendar_header_height: int = 26
+    grid_column_width: int = 132
+    # Wide enough for "sb 15.08 · Wniebowzięcie NMP" to be worth reading.
+    grid_date_width: int = 212
 
 
 METRICS = Metrics()
@@ -200,6 +217,9 @@ def stylesheet(
         font-size: {m.font_section}px;
         font-weight: 600;
     }}
+    QLabel[tone="success"] {{ font-size: {m.font_secondary}px; color: {p.success}; }}
+    QLabel[tone="danger"] {{ font-size: {m.font_secondary}px; color: {p.danger}; }}
+    QLabel[tone="warning"] {{ font-size: {m.font_secondary}px; color: {p.warning}; }}
 
     /* Buttons ------------------------------------------------------------- */
     QPushButton {{
@@ -245,7 +265,7 @@ def stylesheet(
     QToolButton:focus {{ border-color: {p.accent}; }}
 
     /* Inputs -------------------------------------------------------------- */
-    QLineEdit, QComboBox, QDateEdit, QSpinBox {{
+    QLineEdit, QComboBox, QDateEdit, QTimeEdit, QSpinBox {{
         min-height: {m.control_height}px;
         background: {p.elevated};
         border: 1px solid {p.border_strong};
@@ -254,17 +274,28 @@ def stylesheet(
         selection-background-color: {p.accent};
         selection-color: {p.on_accent};
     }}
-    QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QSpinBox:focus {{
+    QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QTimeEdit:focus, QSpinBox:focus {{
         border-color: {p.accent};
     }}
-    QLineEdit:disabled, QComboBox:disabled {{ color: {p.text_muted}; background: {p.surface}; }}
-    QComboBox::drop-down {{
+    QLineEdit:disabled, QComboBox:disabled, QDateEdit:disabled,
+    QTimeEdit:disabled, QSpinBox:disabled {{
+        color: {p.text_muted};
+        background: {p.surface};
+        border-color: {p.border};
+    }}
+    QComboBox::drop-down, QDateEdit::drop-down {{
         border: none;
         width: {m.space_6}px;
         subcontrol-position: center right;
         right: {m.space_2}px;
     }}
-    QComboBox::down-arrow {{ width: 16px; height: 16px; {chevron} }}
+    QComboBox::down-arrow, QDateEdit::down-arrow {{ width: 16px; height: 16px; {chevron} }}
+    /* Time fields are typed into, not clicked up and down; the native arrows only
+       break the shape of the field. */
+    QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {{
+        width: 0;
+        border: none;
+    }}
     QComboBox QAbstractItemView {{
         background: {p.elevated};
         border: 1px solid {p.border_strong};
@@ -280,21 +311,25 @@ def stylesheet(
         font-weight: 500;
     }}
     QCheckBox {{ spacing: {m.space_2}px; }}
-    QCheckBox::indicator {{
+    /* QListWidget items carry their own indicator, which QCheckBox rules do not reach. */
+    QCheckBox::indicator, QListView::indicator {{
         width: 16px;
         height: 16px;
         border: 1px solid {p.border_strong};
         border-radius: {m.radius_sm}px;
         background: {p.elevated};
     }}
-    QCheckBox::indicator:checked {{
+    QCheckBox::indicator:checked, QListView::indicator:checked {{
         background: {p.accent};
         border-color: {p.accent};
         {checked_mark}
     }}
 
-    /* Tables -------------------------------------------------------------- */
-    QTableView {{
+    /* Tables ---------------------------------------------------------------
+       Scoped to our own tables with the "data" property. A bare QTableView rule
+       would also hit the table inside QCalendarWidget, take over its drawing and
+       silently drop the colours the calendar sets on individual dates. */
+    QTableView[data="true"] {{
         background: {p.background};
         alternate-background-color: {p.background};
         border: 1px solid {p.border};
@@ -304,13 +339,61 @@ def stylesheet(
         selection-background-color: {p.surface_active};
         selection-color: {p.text_primary};
     }}
-    QTableView::item {{
+    QTableView[data="true"]::item {{
         padding: 0 {m.space_3}px;
         border-bottom: 1px solid {p.border};
     }}
-    QTableView::item:hover {{ background: {p.surface_hover}; }}
-    QTableView::item:selected {{ background: {p.surface_active}; color: {p.text_primary}; }}
-    QHeaderView::section {{
+    QTableView[data="true"]::item:hover {{ background: {p.surface_hover}; }}
+    QTableView[data="true"]::item:selected {{
+        background: {p.surface_active};
+        color: {p.text_primary};
+    }}
+    /* The grid draws its own cells, rules and cursor in the delegate, so nothing here
+       may paint over them. Only the frame around the whole table is left to the sheet. */
+    QTableView[role="grid"] {{
+        background: {p.background};
+        border: 1px solid {p.border};
+        border-radius: {m.radius_md}px;
+        selection-background-color: transparent;
+        outline: none;
+    }}
+    QTableView[role="grid"]::item {{
+        border: none;
+        padding: 0;
+        background: transparent;
+    }}
+    QTableView[role="grid"]::item:selected {{ background: transparent; }}
+    /* The editor sits exactly in the cell: square, flush, no frame of its own. */
+    QTableView[role="grid"] QLineEdit {{
+        border: 2px solid {p.accent};
+        border-radius: 0;
+        padding: 0;
+        margin: 0;
+        min-height: 0;
+        background: {p.elevated};
+        color: {p.text_primary};
+    }}
+    /* The stub above the dates: part of the same ruled table, not a stray grey box. */
+    QTableView[role="grid"] QTableCornerButton::section {{
+        background: {p.background};
+        border: none;
+        border-right: 1px solid {p.border};
+        border-bottom: 1px solid {p.border};
+    }}
+    QTableView[role="grid"] QHeaderView::section {{
+        background: {p.background};
+        border: none;
+        border-right: 1px solid {p.border};
+        border-bottom: 1px solid {p.border};
+        padding: 0 {m.space_3}px;
+        font-size: {m.font_secondary}px;
+        font-weight: 500;
+        color: {p.text_secondary};
+    }}
+    /* Without this the header paints its own colour over the empty area below the last
+       row, leaving a stray block under the grid. */
+    QTableView[data="true"] QHeaderView {{ background: transparent; border: none; }}
+    QTableView[data="true"] QHeaderView::section {{
         background: {p.background};
         color: {p.text_muted};
         border: none;
@@ -321,7 +404,49 @@ def stylesheet(
         font-weight: 600;
         text-align: left;
     }}
-    QTableCornerButton::section {{ background: {p.background}; border: none; }}
+    QTableView[data="true"] QTableCornerButton::section {{
+        background: {p.background};
+        border: none;
+    }}
+    /* The totals strip under the grid: its own view, so it never scrolls away. */
+    QTableView[role="totals"] {{
+        background: {p.surface};
+        border: 1px solid {p.border};
+        border-radius: {m.radius_md}px;
+        font-weight: 600;
+    }}
+    QTableView[role="totals"]::item {{ border-bottom: none; }}
+
+    /* Calendar popup ------------------------------------------------------- */
+    /* Only the navigation bar is styled. The month grid inside a QCalendarWidget is a
+       QTableView, and any ::item rule aimed at it makes Qt draw the cells itself and
+       ignore the colours the calendar puts on individual dates — which is how holidays
+       stop showing. Everything the table rules above do is scoped away from it. */
+    QCalendarWidget QWidget#qt_calendar_navigationbar {{
+        background: {p.elevated};
+        border-bottom: 1px solid {p.border};
+    }}
+    QCalendarWidget QToolButton {{
+        background: transparent;
+        border: none;
+        color: {p.text_primary};
+        font-size: {m.font_secondary}px;
+        font-weight: 600;
+        padding: {m.space_1}px {m.space_2}px;
+    }}
+    QCalendarWidget QToolButton:hover {{ background: {p.surface_hover}; }}
+    QCalendarWidget QToolButton::menu-indicator {{ image: none; }}
+    QCalendarWidget QSpinBox {{ min-height: 0; }}
+    /* Qt's documented handle for the month grid: :disabled is how it paints the days
+       that spill in from the neighbouring months. */
+    QCalendarWidget QAbstractItemView:enabled {{
+        background: {p.elevated};
+        color: {p.text_primary};
+        selection-background-color: {p.accent};
+        selection-color: {p.on_accent};
+        outline: none;
+    }}
+    QCalendarWidget QAbstractItemView:disabled {{ color: {p.text_muted}; }}
 
     /* Dialogs, menus, status ---------------------------------------------- */
     QDialog {{ background: {p.background}; }}

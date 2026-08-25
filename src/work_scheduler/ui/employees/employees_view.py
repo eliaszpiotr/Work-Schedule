@@ -22,11 +22,22 @@ from PySide6.QtWidgets import (
 
 from work_scheduler.database.models import Employee
 from work_scheduler.services import EmployeeService, ServiceError
-from work_scheduler.ui.components import EmptyState, PageHeader, primary_button
-from work_scheduler.ui.employees.employee_dialog import PROFESSION_LABELS, EmployeeDialog
+from work_scheduler.ui.components import (
+    PROFESSION_LABELS,
+    EmptyState,
+    PageHeader,
+    confirm_destructive,
+    primary_button,
+    set_button_icon,
+)
+from work_scheduler.ui.employees.employee_dialog import EmployeeDialog
 from work_scheduler.ui.theme import METRICS, Palette
 
 ACTIVE_LABEL = {True: "Aktywny", False: "Nieaktywny"}
+
+# The first column reads "Imię Nazwisko" but has to sort by surname, so the proxy is
+# given a separate key instead of the text on screen.
+SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 class EmployeeTableModel(QAbstractTableModel):
@@ -53,10 +64,15 @@ class EmployeeTableModel(QAbstractTableModel):
         return 0 if parent and parent.isValid() else len(self.HEADERS)
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> str | None:
-        if not index.isValid() or role != Qt.ItemDataRole.DisplayRole:
+        if not index.isValid():
             return None
 
         employee = self._employees[index.row()]
+        if role == SORT_ROLE and index.column() == 0:
+            return f"{employee.last_name} {employee.first_name}"
+        if role not in (Qt.ItemDataRole.DisplayRole, SORT_ROLE):
+            return None
+
         return (
             employee.full_name,
             PROFESSION_LABELS[employee.profession],
@@ -86,7 +102,12 @@ class EmployeesView(QWidget):
         self._proxy.setSourceModel(self._model)
         self._proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self._proxy.setFilterKeyColumn(-1)
+        self._proxy.setSortRole(SORT_ROLE)
+        self._proxy.setSortCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        # Ą, Ć, Ł and the rest belong in their Polish places, not after Z.
+        self._proxy.setSortLocaleAware(True)
 
+        self._add = primary_button("Dodaj pracownika", "plus", palette)
         self._search = QLineEdit()
         self._show_inactive = QCheckBox("Pokaż nieaktywnych")
         self._table = QTableView()
@@ -99,9 +120,8 @@ class EmployeesView(QWidget):
 
     def _build(self) -> None:
         header = PageHeader("Pracownicy")
-        add = primary_button("Dodaj pracownika", "plus", self._palette)
-        add.clicked.connect(self.add_employee)
-        header.add_action(add)
+        self._add.clicked.connect(self.add_employee)
+        header.add_action(self._add)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -143,6 +163,7 @@ class EmployeesView(QWidget):
         return row
 
     def _configure_table(self) -> None:
+        self._table.setProperty("data", "true")
         self._table.setModel(self._proxy)
         self._table.setSortingEnabled(True)
         self._table.sortByColumn(0, Qt.SortOrder.AscendingOrder)
@@ -168,6 +189,13 @@ class EmployeesView(QWidget):
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._open_context_menu)
         self._table.doubleClicked.connect(lambda _: self.edit_selected())
+
+    # Appearance -------------------------------------------------------------
+
+    def apply_palette(self, palette: Palette) -> None:
+        """Icons are painted, not styled, so they need repainting when the theme flips."""
+        self._palette = palette
+        set_button_icon(self._add, "plus", palette.on_accent)
 
     # Data -------------------------------------------------------------------
 
@@ -222,14 +250,12 @@ class EmployeesView(QWidget):
         if employee is None:
             return
 
-        confirmed = QMessageBox.question(
+        if confirm_destructive(
             self,
             "Usunąć pracownika?",
-            f"{employee.full_name} zostanie trwale usunięty z kartoteki.",
-            QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes,
-            QMessageBox.StandardButton.Cancel,
-        )
-        if confirmed is QMessageBox.StandardButton.Yes:
+            f"{employee.full_name} zniknie z kartoteki na dobre. Tego nie da się cofnąć.",
+            "Usuń pracownika",
+        ):
             self._run(lambda: self._service.delete(employee.id))
 
     def _run(self, operation) -> None:
@@ -241,7 +267,14 @@ class EmployeesView(QWidget):
             return
         self.reload()
 
+    def pick_row_at(self, position: QPoint) -> None:
+        """Qt does not move the selection on a right-click, so the menu has to."""
+        index = self._table.indexAt(position)
+        if index.isValid():
+            self._table.selectRow(index.row())
+
     def _open_context_menu(self, position: QPoint) -> None:
+        self.pick_row_at(position)
         employee = self.selected_employee()
         if employee is None:
             return

@@ -11,13 +11,8 @@ from PySide6.QtWidgets import (
 )
 
 from work_scheduler.database.models import Employee, Profession
-from work_scheduler.ui.components import primary_button, secondary_button
+from work_scheduler.ui.components import PROFESSION_LABELS, primary_button, secondary_button
 from work_scheduler.ui.theme import METRICS
-
-PROFESSION_LABELS: dict[Profession, str] = {
-    Profession.PHARMACIST: "Magister",
-    Profession.TECHNICIAN: "Technik",
-}
 
 
 class EmployeeDialog(QDialog):
