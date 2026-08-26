@@ -1,9 +1,12 @@
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 from work_scheduler.services import OpeningHoursService, ServiceError
-from work_scheduler.ui.components import PageHeader, primary_button, restyle
+from work_scheduler.ui.components import Card, PageHeader, primary_button, restyle
 from work_scheduler.ui.settings.opening_hours_editor import OpeningHoursEditor
 from work_scheduler.ui.theme import METRICS, Palette
+
+# A week of time fields does not get wider by being given the whole window.
+SETTINGS_CARD_WIDTH = 680
 
 
 class SettingsView(QWidget):
@@ -28,8 +31,8 @@ class SettingsView(QWidget):
         layout.setSpacing(0)
         layout.addWidget(header)
 
-        section = QLabel("Godziny otwarcia")
-        section.setObjectName("emptyTitle")
+        section = QLabel("Godziny otwarcia apteki")
+        section.setObjectName("sectionTitle")
         hint = QLabel(
             "Nowe grafiki dostają te godziny jako punkt wyjścia. "
             "Zmiana tutaj nie rusza grafików już utworzonych."
@@ -37,17 +40,25 @@ class SettingsView(QWidget):
         hint.setObjectName("mutedText")
         hint.setWordWrap(True)
 
-        body = QVBoxLayout()
+        # The week sits in a card of its own: on a screen holding one thing, the panel
+        # is what tells the reader where that thing begins and ends.
+        card = Card()
+        card.body().setSpacing(METRICS.space_2)
+        card.body().addWidget(section)
+        card.body().addWidget(hint)
+        card.body().addSpacing(METRICS.space_2)
+        card.body().addWidget(self._editor)
+        card.setMaximumWidth(SETTINGS_CARD_WIDTH)
+
+        panel = QFrame()
+        panel.setObjectName("workspaceBody")
+        body = QVBoxLayout(panel)
         body.setContentsMargins(METRICS.space_6, METRICS.space_5, METRICS.space_6, METRICS.space_6)
         body.setSpacing(METRICS.space_3)
-        body.addWidget(section)
-        body.addWidget(hint)
-        body.addSpacing(METRICS.space_2)
-        body.addWidget(self._editor)
-        body.addSpacing(METRICS.space_2)
+        body.addWidget(card)
         body.addWidget(self._status)
         body.addStretch()
-        layout.addLayout(body)
+        layout.addWidget(panel, stretch=1)
 
     def apply_palette(self, palette: Palette) -> None:
         self._palette = palette

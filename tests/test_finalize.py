@@ -2,6 +2,7 @@ from datetime import date, time
 from pathlib import Path
 
 import pytest
+from PySide6.QtWidgets import QLineEdit
 from sqlalchemy import Engine
 
 from work_scheduler.database.models import Profession, ScheduleStatus
@@ -191,6 +192,67 @@ class TestGridButton:
 
         assert announced == [True]
 
+    def test_a_cell_still_being_typed_in_is_written_before_closing(
+        self,
+        opened: tuple[ScheduleGridView, ScheduleData],
+        schedules: ScheduleService,
+        filled: int,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Qt hands an open editor's value to the model only when the view dies.
+
+        Closing with one open therefore wrote a shift after the schedule was marked
+        ready, and the write pulled it straight back to draft.
+        """
+        view, _ = opened
+        monkeypatch.setattr(schedule_grid, "FinalizeDialog", accepting(Outcome.CLOSE))
+        view.show()
+
+        index = view._model.index(0, 0)
+        view._table.setCurrentIndex(index)
+        view._table.edit(index)
+        editor = view._table.findChild(QLineEdit)
+        assert editor is not None
+        editor.setText("9-15")
+
+        view.finish_schedule()
+
+        assert status(schedules, filled) is ScheduleStatus.FINAL
+
+    def test_what_was_typed_is_kept_not_thrown_away(
+        self,
+        opened: tuple[ScheduleGridView, ScheduleData],
+        shifts: ShiftService,
+        filled: int,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        view, data = opened
+        monkeypatch.setattr(schedule_grid, "FinalizeDialog", accepting(Outcome.CLOSE))
+        view.show()
+
+        index = view._model.index(0, 0)
+        view._table.setCurrentIndex(index)
+        view._table.edit(index)
+        view._table.findChild(QLineEdit).setText("9-15")
+
+        view.finish_schedule()
+
+        assert shifts.grid(filled)[data.lanes[0].id, PERIOD[0]] == (time(9), time(15))
+
+    def test_the_check_sees_the_cell_being_typed_in(
+        self, opened: tuple[ScheduleGridView, ScheduleData]
+    ) -> None:
+        view, _ = opened
+        view.show()
+        index = view._model.index(0, 0)
+        view._table.setCurrentIndex(index)
+        view._table.edit(index)
+        view._table.findChild(QLineEdit).setText("6-22")
+
+        outside = [finding for finding in view.check().notes if finding.kind is Kind.OUTSIDE_HOURS]
+
+        assert outside != []
+
     def test_cancelling_leaves_the_schedule_alone(
         self,
         opened: tuple[ScheduleGridView, ScheduleData],
@@ -256,24 +318,24 @@ class TestListActions:
         self, view: SchedulesView, schedules: ScheduleService, filled: int
     ) -> None:
         view.reload()
-        view._table.selectRow(0)
+        view.pick(filled)
         assert self.menu_entries(view)["Zapisz PDF…"] is False
 
         schedules.finalize(filled)
         view.reload()
-        view._table.selectRow(0)
+        view.pick(filled)
         assert self.menu_entries(view)["Zapisz PDF…"] is True
 
     def test_going_back_to_draft_is_offered_only_for_a_closed_one(
         self, view: SchedulesView, schedules: ScheduleService, filled: int
     ) -> None:
         view.reload()
-        view._table.selectRow(0)
+        view.pick(filled)
         assert "Wróć do roboczego" not in self.menu_entries(view)
 
         schedules.finalize(filled)
         view.reload()
-        view._table.selectRow(0)
+        view.pick(filled)
         assert "Wróć do roboczego" in self.menu_entries(view)
 
     def test_going_back_to_draft_from_the_list_works(
@@ -281,7 +343,7 @@ class TestListActions:
     ) -> None:
         schedules.finalize(filled)
         view.reload()
-        view._table.selectRow(0)
+        view.pick(filled)
         view.reopen_selected()
 
         assert status(schedules, filled) is ScheduleStatus.DRAFT

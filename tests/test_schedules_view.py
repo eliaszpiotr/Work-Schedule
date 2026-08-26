@@ -1,9 +1,9 @@
 from datetime import date, time
 
 import pytest
-from PySide6.QtCore import QLocale, QPoint
+from PySide6.QtCore import QDate, QLocale, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import QTableView
+from PySide6.QtWidgets import QLabel, QTableView
 from sqlalchemy import Engine
 
 from work_scheduler.database.models import Profession, ScheduleStatus
@@ -15,11 +15,17 @@ from work_scheduler.services import (
     ScheduleService,
     ShiftService,
 )
-from work_scheduler.ui.schedules.schedule_dialog import ScheduleDialog
+from work_scheduler.ui.schedules.people_picker import AVATAR as PICKER_AVATAR
+from work_scheduler.ui.schedules.people_picker import (
+    NAME_ROLE,
+    TRADE_ROLE,
+    PersonDelegate,
+)
+from work_scheduler.ui.schedules.schedule_dialog import ScheduleDialog, suggested_name
 from work_scheduler.ui.schedules.schedules_view import SchedulesView
-from work_scheduler.ui.theme import LIGHT
+from work_scheduler.ui.theme import LIGHT, METRICS
 
-TABLE_PAGE, EMPTY_PAGE = 0, 1
+CARDS_PAGE, EMPTY_PAGE = 0, 1
 OPEN_ALL_WEEK = [DayHours(weekday, time(8), time(20)) for weekday in range(7)]
 
 
@@ -141,17 +147,21 @@ class TestList:
         add_schedule(schedules, employees, "Sierpień")
         view.reload()
 
-        assert view._stack.currentIndex() == TABLE_PAGE
-        assert view._model.rowCount() == 1
+        assert view._stack.currentIndex() == CARDS_PAGE
+        assert len(view._cards.cards()) == 1
 
-    def test_a_row_reads_the_period_and_the_team_size(
+    def test_a_card_reads_the_name_the_period_and_the_team_size(
         self, view: SchedulesView, schedules: ScheduleService, employees: EmployeeService
     ) -> None:
         add_schedule(schedules, employees, "Sierpień")
         view.reload()
+        card = view._cards.cards()[0]
 
-        row = [view._model.index(0, column).data() for column in range(4)]
-        assert row == ["Sierpień", "10.08.2026 – 23.08.2026", "2", "Roboczy"]
+        written = " ".join(label.text() for label in card.findChildren(QLabel))
+        assert "Sierpień" in written
+        assert "10.08.2026 – 23.08.2026" in written
+        assert "2 osoby" in written
+        assert "Roboczy" in written
 
     def test_the_status_filter_narrows_the_list(
         self, view: SchedulesView, schedules: ScheduleService, employees: EmployeeService
@@ -159,9 +169,16 @@ class TestList:
         add_schedule(schedules, employees, "Sierpień")
         view.reload()
 
-        view._status.setCurrentIndex(view._status.findData(ScheduleStatus.ARCHIVED))
+        view._filter.select(ScheduleStatus.FINAL)
+        view.reload()
 
-        assert view._model.rowCount() == 0
+        assert view._cards.cards() == []
+
+    def test_the_filter_offers_no_state_the_application_cannot_reach(
+        self, view: SchedulesView
+    ) -> None:
+        """Nothing ever archives a schedule, so an archive filter is a dead end."""
+        assert ScheduleStatus.ARCHIVED not in view._filter._values
 
     def test_opening_a_schedule_announces_which_one(
         self, view: SchedulesView, schedules: ScheduleService, employees: EmployeeService
@@ -171,50 +188,72 @@ class TestList:
         opened: list[int] = []
         view.schedule_opened.connect(opened.append)
 
-        view._table.selectRow(0)
+        view.pick(schedule_id)
         view.open_selected()
 
         assert opened == [schedule_id]
 
+    def test_a_card_opens_itself_on_a_double_click(
+        self, view: SchedulesView, schedules: ScheduleService, employees: EmployeeService
+    ) -> None:
+        schedule_id = add_schedule(schedules, employees, "Sierpień")
+        view.reload()
+        opened: list[int] = []
+        view.schedule_opened.connect(opened.append)
 
-class TestContextMenu:
-    """Right-clicking does not move the selection in Qt, so a menu that reads the
-    selection found nothing and never opened — which is why deleting looked broken."""
+        view._cards.cards()[0].opened.emit(schedule_id)
 
-    def test_right_clicking_a_row_picks_it(
+        assert opened == [schedule_id]
+
+
+class TestPicking:
+    """The card list has no selection model of its own, so the view keeps the pick."""
+
+    def test_nothing_is_picked_to_begin_with(
+        self, view: SchedulesView, schedules: ScheduleService, employees: EmployeeService
+    ) -> None:
+        add_schedule(schedules, employees, "Sierpień")
+        view.reload()
+
+        assert view.selected_schedule() is None
+
+    def test_picking_a_card_marks_it(
         self, view: SchedulesView, schedules: ScheduleService, employees: EmployeeService
     ) -> None:
         add_schedule(schedules, employees, "Lipiec")
-        add_schedule(schedules, employees, "Sierpień")
+        second = add_schedule(schedules, employees, "Sierpień")
         view.reload()
 
-        view.pick_row_at(view._table.visualRect(view._model.index(1, 0)).center())
+        view.pick(second)
+        picked = [card.property("selected") for card in view._cards.cards()]
 
-        assert view.selected_schedule().name == view._model.schedule_at(1).name
+        assert view.selected_schedule().id == second
+        assert picked.count("true") == 1
 
-    def test_clicking_past_the_last_row_changes_nothing(
+    def test_a_pick_does_not_survive_the_schedule_going_away(
         self, view: SchedulesView, schedules: ScheduleService, employees: EmployeeService
     ) -> None:
-        add_schedule(schedules, employees, "Sierpień")
+        schedule_id = add_schedule(schedules, employees, "Sierpień")
         view.reload()
-        view._table.selectRow(0)
+        view.pick(schedule_id)
 
-        view.pick_row_at(QPoint(5, 10_000))
+        schedules.delete(schedule_id)
+        view.reload()
 
-        assert view.selected_schedule() is not None
+        assert view.selected_schedule() is None
 
 
 class TestDeleting:
     def test_a_schedule_can_be_deleted(
         self, view: SchedulesView, schedules: ScheduleService, employees: EmployeeService
     ) -> None:
-        add_schedule(schedules, employees, "Sierpień")
+        schedule_id = add_schedule(schedules, employees, "Sierpień")
         view.reload()
-        view._table.selectRow(0)
+        view.pick(schedule_id)
 
         view.delete_selected(confirmed=True)
 
-        assert view._model.rowCount() == 0
+        assert view._cards.cards() == []
         assert schedules.list_schedules() == []
 
     def test_a_schedule_with_hours_in_it_can_still_be_deleted(
@@ -226,7 +265,7 @@ class TestDeleting:
             data.lanes[0].id, date(2026, 8, 10), time(8), time(16)
         )
         view.reload()
-        view._table.selectRow(0)
+        view.pick(schedule_id)
 
         view.delete_selected(confirmed=True)
 
@@ -235,18 +274,106 @@ class TestDeleting:
     def test_declining_the_question_keeps_it(
         self, view: SchedulesView, schedules: ScheduleService, employees: EmployeeService
     ) -> None:
-        add_schedule(schedules, employees, "Sierpień")
+        schedule_id = add_schedule(schedules, employees, "Sierpień")
         view.reload()
-        view._table.selectRow(0)
+        view.pick(schedule_id)
 
         view.delete_selected(confirmed=False)
 
-        assert view._model.rowCount() == 1
+        assert len(view._cards.cards()) == 1
+
+    def test_deleting_with_nothing_picked_does_nothing(
+        self, view: SchedulesView, schedules: ScheduleService, employees: EmployeeService
+    ) -> None:
+        add_schedule(schedules, employees, "Sierpień")
+        view.reload()
+
+        view.delete_selected(confirmed=True)
+
+        assert len(schedules.list_schedules()) == 1
 
 
 class TestDeleteKey:
-    def test_the_delete_key_is_wired_to_the_table(self, view: SchedulesView) -> None:
+    def test_the_delete_key_is_wired_to_the_list(self, view: SchedulesView) -> None:
         """With the buttons gone, the keyboard has to be able to do it."""
-        keys = [shortcut.key() for shortcut in view._table.findChildren(QShortcut)]
+        keys = [shortcut.key() for shortcut in view.findChildren(QShortcut)]
 
         assert QKeySequence(QKeySequence.StandardKey.Delete) in keys
+
+
+class TestSuggestedName:
+    def test_a_period_inside_one_month_is_named_after_it(self) -> None:
+        assert suggested_name(date(2026, 8, 1), date(2026, 8, 31)) == "Sierpień 2026"
+
+    def test_a_period_crossing_a_month_gives_the_dates_instead(self) -> None:
+        """Calling a schedule that runs into September "Sierpień" would be a small lie."""
+        assert suggested_name(date(2026, 8, 26), date(2026, 9, 5)) == "26.08 – 05.09.2026"
+
+    def test_a_period_crossing_a_year_spells_both_out(self) -> None:
+        assert suggested_name(date(2026, 12, 28), date(2027, 1, 4)) == "28.12.2026 – 04.01.2027"
+
+
+class TestNameFollowsThePeriod:
+    @pytest.fixture
+    def dialog(self, application, employees: EmployeeService) -> ScheduleDialog:
+        return ScheduleDialog(None, employees.list_employees(include_inactive=False), OPEN_ALL_WEEK)
+
+    def test_moving_the_dates_renames_the_schedule(self, dialog: ScheduleDialog) -> None:
+        dialog._start.setDate(QDate(2026, 11, 2))
+        dialog._end.setDate(QDate(2026, 11, 30))
+
+        assert dialog.name == "Listopad 2026"
+
+    def test_a_name_somebody_typed_is_left_alone(self, dialog: ScheduleDialog) -> None:
+        dialog._name.setText("Dyżury świąteczne")
+        dialog._name.textEdited.emit("Dyżury świąteczne")
+
+        dialog._start.setDate(QDate(2026, 11, 2))
+
+        assert dialog.name == "Dyżury świąteczne"
+
+    def test_clearing_the_name_hands_it_back_to_the_dates(self, dialog: ScheduleDialog) -> None:
+        dialog._name.setText("Moje")
+        dialog._name.textEdited.emit("Moje")
+        dialog._name.setText("")
+        dialog._name.textEdited.emit("")
+
+        dialog._start.setDate(QDate(2026, 11, 2))
+        dialog._end.setDate(QDate(2026, 11, 30))
+
+        assert dialog.name == "Listopad 2026"
+
+
+class TestPeoplePicker:
+    """The wizard was the one screen where a person was a line of plain text."""
+
+    @pytest.fixture
+    def dialog(self, application, employees: EmployeeService) -> ScheduleDialog:
+        return ScheduleDialog(None, employees.list_employees(include_inactive=False), OPEN_ALL_WEEK)
+
+    def test_the_rows_are_painted_like_the_employees_screen(self, dialog: ScheduleDialog) -> None:
+        assert isinstance(dialog._people.itemDelegate(), PersonDelegate)
+
+    def test_a_row_carries_its_pieces_as_data(self, dialog: ScheduleDialog) -> None:
+        item = dialog._people.item(0)
+
+        assert item.data(NAME_ROLE)
+        assert item.data(TRADE_ROLE) in ("magister", "technik")
+        assert item.text() == ""
+
+    def test_clicking_a_row_ticks_it(self, dialog: ScheduleDialog) -> None:
+        item = dialog._people.item(0)
+        dialog._toggle_person(item)
+
+        assert item.checkState() == Qt.CheckState.Checked
+        assert dialog.employee_ids == [item.data(Qt.ItemDataRole.UserRole)]
+
+    def test_clicking_it_again_unticks_it(self, dialog: ScheduleDialog) -> None:
+        item = dialog._people.item(0)
+        dialog._toggle_person(item)
+        dialog._toggle_person(item)
+
+        assert dialog.employee_ids == []
+
+    def test_a_row_is_tall_enough_for_an_avatar(self) -> None:
+        assert METRICS.picker_row_height > PICKER_AVATAR

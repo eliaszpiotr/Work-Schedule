@@ -2,6 +2,7 @@ from datetime import date, time
 
 import pytest
 from PySide6.QtCore import QPoint, Qt
+from PySide6.QtWidgets import QLabel
 from sqlalchemy import Engine
 
 from work_scheduler.database.models import Profession
@@ -13,8 +14,13 @@ from work_scheduler.services import (
     ScheduleService,
     ShiftService,
 )
-from work_scheduler.ui.schedules.schedule_grid import ScheduleGridModel, ScheduleGridView
-from work_scheduler.ui.theme import LIGHT, METRICS
+from work_scheduler.ui.schedules.schedule_grid import (
+    TRADE_NAMES,
+    LaneHeader,
+    ScheduleGridModel,
+    ScheduleGridView,
+)
+from work_scheduler.ui.theme import DARK, LIGHT, METRICS
 
 # 12–16 August 2026 is Wednesday to Sunday: five days, one of them a closed Sunday.
 PERIOD = (date(2026, 8, 12), date(2026, 8, 16))
@@ -60,7 +66,8 @@ def view(
 ) -> ScheduleGridView:
     grid = ScheduleGridView(schedule, schedules, shifts, LIGHT)
     # Big enough that every row of the period is really laid out, not just the first few.
-    grid.resize(700, 500)
+    # The toolbar, the legend and the totals take their share before the rows do.
+    grid.resize(700, 620)
     return grid
 
 
@@ -380,7 +387,42 @@ class TestTableFitsItsRows:
             "Długi", date(2026, 8, 1), date(2026, 8, 31), [employee.id], WEEK
         )
         grid = ScheduleGridView(schedules.open_schedule(created.id), schedules, shifts, LIGHT)
-        grid.resize(900, 400)
+        grid.resize(900, 640)
         grid.show()
 
-        assert grid._table.height() > 200
+        # A month cannot fit, so the table takes what is left after the toolbar, the
+        # legend and the totals — not a token strip with the space wasted below it.
+        assert grid._table.height() > grid.height() / 2
+
+
+class TestLaneHeader:
+    """A header section takes one string, so the trade under a name is painted."""
+
+    def test_the_header_is_the_painted_one(self, view: ScheduleGridView) -> None:
+        assert isinstance(view._table.horizontalHeader(), LaneHeader)
+
+    def test_it_is_tall_enough_for_two_lines(self, view: ScheduleGridView) -> None:
+        assert view._table.horizontalHeader().sizeHint().height() == METRICS.lane_header_height
+
+    def test_every_trade_has_a_word_for_it(self) -> None:
+        assert set(TRADE_NAMES) == set(Profession)
+        assert all(name.islower() for name in TRADE_NAMES.values())
+
+    def test_it_follows_a_theme_change(self, view: ScheduleGridView) -> None:
+        view.apply_palette(DARK)
+
+        assert view._lane_header._palette is DARK
+
+
+class TestLegend:
+    def test_the_colours_are_spelled_out(self, view: ScheduleGridView) -> None:
+        """Nothing else on the screen says what red means."""
+        written = " ".join(label.text() for label in view._legend_strip.findChildren(QLabel))
+
+        for meaning in ("brak magistra", "poza otwarciem", "święto", "zamknięte"):
+            assert meaning in written
+
+    def test_the_way_to_type_hours_is_shown_too(self, view: ScheduleGridView) -> None:
+        written = " ".join(label.text() for label in view._legend_strip.findChildren(QLabel))
+
+        assert "10-15" in written

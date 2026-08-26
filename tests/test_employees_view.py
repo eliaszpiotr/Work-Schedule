@@ -1,12 +1,14 @@
 import pytest
+from PySide6.QtGui import QColor
 from sqlalchemy import Engine
 
 from work_scheduler.database.models import Profession
 from work_scheduler.database.session import create_session_factory
 from work_scheduler.services import EmployeeService
+from work_scheduler.ui.employees.employee_delegate import AVATAR, EmployeeDelegate
 from work_scheduler.ui.employees.employees_view import EmployeesView
 from work_scheduler.ui.icons import load_icon
-from work_scheduler.ui.theme import DARK, LIGHT
+from work_scheduler.ui.theme import DARK, LIGHT, METRICS
 
 TABLE_PAGE, EMPTY_PAGE = 0, 1
 
@@ -123,3 +125,89 @@ def test_right_clicking_a_row_picks_it(view: EmployeesView, service: EmployeeSer
     view.pick_row_at(view._table.visualRect(view._proxy.index(1, 0)).center())
 
     assert view.selected_employee().last_name == "Nowak"
+
+
+class TestRowPainting:
+    """The rows are painted in a delegate: a cell holds one string, and initials, a
+    pill and a state dot are three things."""
+
+    def test_a_row_is_tall_enough_for_an_avatar(self, view: EmployeesView) -> None:
+        assert METRICS.employee_row_height > AVATAR
+
+    def test_the_view_paints_with_the_delegate(self, view: EmployeesView) -> None:
+        assert isinstance(view._table.itemDelegate(), EmployeeDelegate)
+
+    def test_the_delegate_follows_a_theme_change(self, view: EmployeesView) -> None:
+        view.apply_palette(DARK)
+
+        assert view._delegate._palette is DARK
+
+    def test_an_active_person_is_told_from_an_inactive_one(self, view: EmployeesView) -> None:
+        rows = view._proxy.rowCount()
+        states = {view._proxy.index(row, 2).data() for row in range(rows)}
+
+        assert states <= {"Aktywny", "Nieaktywny"}
+
+
+class TestTableUsesTheWindow:
+    """The stack hands the table its own sizeHint unless it is capped instead."""
+
+    def test_everyone_fits_when_there_is_room(self, application, service: EmployeeService) -> None:
+        app, _ = application
+        for index in range(9):
+            service.create(f"Imię{index}", f"Nazwisko{index}", Profession.TECHNICIAN)
+
+        view = EmployeesView(service, LIGHT)
+        view.resize(900, 760)
+        view.show()
+        app.processEvents()
+
+        assert not view._table.verticalScrollBar().isVisible()
+
+    def test_the_cap_follows_the_number_of_people(
+        self, application, service: EmployeeService
+    ) -> None:
+        app, _ = application
+        view = EmployeesView(service, LIGHT)
+        view.resize(900, 760)
+        view.show()
+        app.processEvents()
+        empty = view._stack.maximumHeight()
+
+        service.create("Anna", "Kowalska", Profession.PHARMACIST)
+        view.reload()
+        app.processEvents()
+
+        assert view._stack.maximumHeight() > empty
+
+
+class TestBadgeColours:
+    """Checked on the pixels: the colour is chosen in a delegate, so a model-level
+    assertion would pass even with every badge coming out the same grey."""
+
+    @staticmethod
+    def badge_colour(view: EmployeesView, row: int) -> str:
+        image = view._table.viewport().grab().toImage()
+        rect = view._table.visualRect(view._proxy.index(row, 1))
+        return QColor(image.pixel(rect.x() + 20, rect.center().y())).name().upper()
+
+    @pytest.fixture
+    def two_trades(self, application, service: EmployeeService) -> EmployeesView:
+        app, _ = application
+        service.create("Anna", "Kowalska", Profession.PHARMACIST)
+        service.create("Marek", "Nowak", Profession.TECHNICIAN)
+
+        view = EmployeesView(service, LIGHT)
+        view.resize(900, 400)
+        view.show()
+        app.processEvents()
+        return view
+
+    def test_a_pharmacist_badge_is_tinted(self, two_trades: EmployeesView) -> None:
+        assert self.badge_colour(two_trades, 0) == LIGHT.holiday_surface.upper()
+
+    def test_a_technician_badge_is_neutral(self, two_trades: EmployeesView) -> None:
+        assert self.badge_colour(two_trades, 1) == LIGHT.surface_active.upper()
+
+    def test_the_two_do_not_come_out_the_same(self, two_trades: EmployeesView) -> None:
+        assert self.badge_colour(two_trades, 0) != self.badge_colour(two_trades, 1)

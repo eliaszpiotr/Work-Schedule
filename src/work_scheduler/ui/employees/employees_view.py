@@ -9,6 +9,7 @@ from PySide6.QtCore import (
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLineEdit,
@@ -30,6 +31,7 @@ from work_scheduler.ui.components import (
     primary_button,
     set_button_icon,
 )
+from work_scheduler.ui.employees.employee_delegate import PROFESSION_ROLE, EmployeeDelegate
 from work_scheduler.ui.employees.employee_dialog import EmployeeDialog
 from work_scheduler.ui.theme import METRICS, Palette
 
@@ -68,6 +70,8 @@ class EmployeeTableModel(QAbstractTableModel):
             return None
 
         employee = self._employees[index.row()]
+        if role == PROFESSION_ROLE:
+            return employee.profession
         if role == SORT_ROLE and index.column() == 0:
             return f"{employee.last_name} {employee.first_name}"
         if role not in (Qt.ItemDataRole.DisplayRole, SORT_ROLE):
@@ -128,7 +132,9 @@ class EmployeesView(QWidget):
         layout.setSpacing(0)
         layout.addWidget(header)
 
-        body = QVBoxLayout()
+        panel = QFrame()
+        panel.setObjectName("workspaceBody")
+        body = QVBoxLayout(panel)
         body.setContentsMargins(METRICS.space_6, METRICS.space_5, METRICS.space_6, METRICS.space_6)
         body.setSpacing(METRICS.space_4)
         body.addLayout(self._filter_row())
@@ -142,8 +148,13 @@ class EmployeesView(QWidget):
                 ("Dodaj pracownika", self.add_employee),
             )
         )
+        # Stretch, with the cap on the stack: without it the stack hands the table its
+        # own sizeHint, which is a couple of hundred pixels whatever the table holds,
+        # and the rest of the people end up behind a scrollbar with the window half
+        # empty below them.
         body.addWidget(self._stack, stretch=1)
-        layout.addLayout(body)
+        body.addStretch(0)
+        layout.addWidget(panel, stretch=1)
 
     def _filter_row(self) -> QHBoxLayout:
         self._search.setPlaceholderText("Szukaj po nazwisku lub stanowisku…")
@@ -162,9 +173,24 @@ class EmployeesView(QWidget):
         row.addWidget(self._show_inactive)
         return row
 
+    def _fit_to_rows(self) -> None:
+        """Stop at the last person, and start scrolling only when they stop fitting."""
+        frame = 2 * self._table.frameWidth()
+        content = (
+            max(self._table.horizontalHeader().height(), METRICS.table_row_height)
+            + self._proxy.rowCount() * METRICS.employee_row_height
+            + frame
+        )
+        self._stack.setMaximumHeight(content)
+
     def _configure_table(self) -> None:
         self._table.setProperty("data", "true")
         self._table.setModel(self._proxy)
+        self._delegate = EmployeeDelegate(self._palette, self)
+        self._table.setItemDelegate(self._delegate)
+        self._proxy.layoutChanged.connect(self._fit_to_rows)
+        self._proxy.modelReset.connect(self._fit_to_rows)
+        self._fit_to_rows()
         self._table.setSortingEnabled(True)
         self._table.sortByColumn(0, Qt.SortOrder.AscendingOrder)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -173,7 +199,8 @@ class EmployeesView(QWidget):
         self._table.setAlternatingRowColors(False)
         self._table.setShowGrid(False)
         self._table.verticalHeader().setVisible(False)
-        self._table.verticalHeader().setDefaultSectionSize(METRICS.table_row_height)
+        # Taller than a plain row: an avatar has to fit without touching the rules.
+        self._table.verticalHeader().setDefaultSectionSize(METRICS.employee_row_height)
         self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._table.horizontalHeader().setSectionResizeMode(
             1, QHeaderView.ResizeMode.ResizeToContents
@@ -196,6 +223,8 @@ class EmployeesView(QWidget):
         """Icons are painted, not styled, so they need repainting when the theme flips."""
         self._palette = palette
         set_button_icon(self._add, "plus", palette.on_accent)
+        self._delegate.set_palette(palette)
+        self._table.viewport().update()
 
     # Data -------------------------------------------------------------------
 
@@ -255,6 +284,7 @@ class EmployeesView(QWidget):
             "Usunąć pracownika?",
             f"{employee.full_name} zniknie z kartoteki na dobre. Tego nie da się cofnąć.",
             "Usuń pracownika",
+            palette=self._palette,
         ):
             self._run(lambda: self._service.delete(employee.id))
 

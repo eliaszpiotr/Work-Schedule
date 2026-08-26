@@ -5,13 +5,16 @@ from PySide6.QtCore import (
     QModelIndex,
     QObject,
     QPoint,
+    QRectF,
     Qt,
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
+    QAbstractItemDelegate,
     QAbstractItemView,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -39,13 +42,22 @@ from work_scheduler.services.time_text import (
     minutes_between,
     parse_range,
 )
-from work_scheduler.ui.components import icon_button, primary_button, restyle, set_button_icon
+from work_scheduler.ui.components import (
+    PROFESSION_LABELS,
+    Badge,
+    icon_button,
+    primary_button,
+    restyle,
+    set_button_icon,
+)
 from work_scheduler.ui.schedules.finalize_dialog import FinalizeDialog, Outcome
+from work_scheduler.ui.schedules.schedule_card import status_badge
 from work_scheduler.ui.text import days as count_days
 from work_scheduler.ui.text import people as count_people
 from work_scheduler.ui.theme import METRICS, Palette
 
 TOTALS_LABEL = "Suma godzin"
+TRADE_NAMES = {profession: label.lower() for profession, label in PROFESSION_LABELS.items()}
 STATUS_LINGER_MS = 5000
 
 
@@ -393,6 +405,64 @@ class ShiftDelegate(QStyledItemDelegate):
         editor.setGeometry(option.rect)
 
 
+class LaneHeader(QHeaderView):
+    """The column headings, painted rather than styled.
+
+    A header section takes one string, so the trade under a name has to be drawn by
+    hand — and it belongs here, because cover is checked against it.
+    """
+
+    def __init__(self, model: "ScheduleGridModel", palette: Palette, parent=None) -> None:  # noqa: ANN001
+        super().__init__(Qt.Orientation.Horizontal, parent)
+        self._model = model
+        self._palette = palette
+        self.setHighlightSections(False)
+        self.setSectionsClickable(False)
+
+    def set_palette(self, palette: Palette) -> None:
+        self._palette = palette
+        self.viewport().update()
+
+    def sizeHint(self):  # noqa: N802, ANN201 - Qt API
+        hint = super().sizeHint()
+        hint.setHeight(METRICS.lane_header_height)
+        return hint
+
+    def paintSection(self, painter: QPainter, rect, index: int) -> None:  # noqa: N802, ANN001
+        lanes = self._model.schedule.lanes
+        if not 0 <= index < len(lanes):
+            return
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(rect, QColor(self._palette.surface))
+
+        painter.setPen(QPen(QColor(self._palette.border), 1))
+        painter.drawLine(rect.topRight(), rect.bottomRight())
+        painter.drawLine(rect.bottomLeft(), rect.bottomRight())
+
+        lane = lanes[index]
+        box = QRectF(rect)
+        name = QRectF(box.x(), box.y() + 8, box.width(), box.height() * 0.44)
+        trade = QRectF(box.x(), box.center().y() + 1, box.width(), box.height() * 0.4)
+
+        painter.setPen(QPen(QColor(self._palette.text_primary)))
+        painter.setFont(self._font(12.5, QFont.Weight.DemiBold))
+        painter.drawText(name, Qt.AlignmentFlag.AlignCenter, lane.name)
+
+        painter.setPen(QPen(QColor(self._palette.text_muted)))
+        painter.setFont(self._font(10, QFont.Weight.Normal))
+        painter.drawText(trade, Qt.AlignmentFlag.AlignCenter, TRADE_NAMES[lane.profession])
+        painter.restore()
+
+    @staticmethod
+    def _font(size: float, weight: QFont.Weight) -> QFont:
+        font = QFont()
+        font.setPointSizeF(size)
+        font.setWeight(weight)
+        return font
+
+
 class ScheduleGridView(QWidget):
     """The schedule itself: days down the side, people across the top, hours in between."""
 
@@ -416,6 +486,9 @@ class ScheduleGridView(QWidget):
         self._totals = TotalsModel(self._model, self)
         self._table = QTableView()
         self._totals_view = QTableView()
+        # Built here rather than in the body: the table is configured first and asks
+        # the card for its height cap while doing it.
+        self._card = QFrame()
         self._back = icon_button("chevron-left", "Wróć do listy grafików", palette)
         self._title = QLabel()
         self._status = QLabel()
@@ -434,15 +507,28 @@ class ScheduleGridView(QWidget):
         self._configure_table()
         self._configure_totals()
 
-        body = QVBoxLayout()
-        body.setContentsMargins(METRICS.space_6, METRICS.space_5, METRICS.space_6, METRICS.space_6)
-        body.setSpacing(METRICS.space_2)
-        body.addWidget(self._table, stretch=1)
-        body.addWidget(self._totals_view)
+        panel = QFrame()
+        panel.setObjectName("workspaceBody")
+        body = QVBoxLayout(panel)
+        body.setContentsMargins(METRICS.space_6, METRICS.space_4, METRICS.space_6, METRICS.space_6)
+        body.setSpacing(METRICS.space_3)
+        body.addWidget(self._legend())
+
+        # The days and their totals share one outline, so the two read as one table
+        # rather than as a table with a second table stuck underneath it.
+        card = self._card
+        card.setObjectName("gridCard")
+        inside = QVBoxLayout(card)
+        inside.setContentsMargins(0, 0, 0, 0)
+        inside.setSpacing(0)
+        inside.addWidget(self._table, stretch=1)
+        inside.addWidget(self._totals_view)
+
+        body.addWidget(card, stretch=1)
         body.addWidget(self._status)
         # Holds the table against the top when the period is short.
         body.addStretch()
-        layout.addLayout(body)
+        layout.addWidget(panel, stretch=1)
 
         self._status.setWordWrap(True)
         self._status.hide()
@@ -450,20 +536,41 @@ class ScheduleGridView(QWidget):
         self._model.reopened.connect(self._note_reopened)
 
     def _toolbar(self) -> QWidget:
-        bar = QWidget()
+        bar = QFrame()
         bar.setObjectName("toolbar")
-        bar.setFixedHeight(METRICS.toolbar_height + METRICS.space_4)
+        # Two lines of heading need more than a single-line toolbar.
+        bar.setFixedHeight(METRICS.toolbar_height + METRICS.space_6)
 
         self._back.clicked.connect(self.closed.emit)
-        self._title.setObjectName("pageTitle")
+        self._title.setObjectName("sectionTitle")
         self._title.setText(self._schedule.name)
+
+        self._badge = Badge(*status_badge(self._schedule.status))
 
         period = QLabel(
             f"{self._schedule.start_date:%d.%m.%Y} – {self._schedule.end_date:%d.%m.%Y}"
             f"  ·  {count_days(len(self._schedule.days()))}"
             f"  ·  {count_people(len(self._schedule.lanes))}"
         )
-        period.setObjectName("secondaryText")
+        period.setObjectName("mutedText")
+
+        # Name and state on one line, the period quietly under it: the toolbar is read
+        # once on arrival and then ignored, so it may not take a whole line of chrome.
+        heading = QHBoxLayout()
+        heading.setSpacing(METRICS.space_2)
+        heading.addWidget(self._title)
+        heading.addWidget(self._badge)
+        heading.addStretch()
+
+        # Stretched top and bottom, or the lower label swells to fill the toolbar and
+        # shoves the title off the top edge.
+        stack = QVBoxLayout()
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setSpacing(0)
+        stack.addStretch()
+        stack.addLayout(heading)
+        stack.addWidget(period)
+        stack.addStretch()
 
         row = QHBoxLayout(bar)
         row.setContentsMargins(METRICS.space_4, 0, METRICS.space_6, 0)
@@ -471,11 +578,53 @@ class ScheduleGridView(QWidget):
         self._finish.clicked.connect(self.finish_schedule)
 
         row.addWidget(self._back)
-        row.addWidget(self._title)
-        row.addWidget(period)
+        row.addLayout(stack)
         row.addStretch()
         row.addWidget(self._finish)
         return bar
+
+    def _legend(self) -> QWidget:
+        """What the colours mean, spelled out.
+
+        The grid says everything with colour and nothing with words, so without this
+        the first red row is a puzzle rather than a warning.
+        """
+        strip = QWidget()
+        row = QHBoxLayout(strip)
+        row.setContentsMargins(2, 0, 2, 0)
+        row.setSpacing(METRICS.space_4)
+
+        for colour, text in (
+            (self._palette.danger_surface, "brak magistra"),
+            (self._palette.warning_surface, "poza otwarciem"),
+            (self._palette.holiday_surface, "święto"),
+            (self._palette.surface_active, "zamknięte"),
+        ):
+            row.addLayout(self._legend_entry(colour, text))
+
+        row.addStretch()
+        hint = QLabel("Wpisz np. 10-15 albo 8:30-16:00")
+        hint.setObjectName("mutedText")
+        row.addWidget(hint)
+        self._legend_strip = strip
+        return strip
+
+    def _legend_entry(self, colour: str, text: str) -> QHBoxLayout:
+        swatch = QLabel()
+        swatch.setFixedSize(11, 11)
+        swatch.setStyleSheet(
+            f"background: {colour};"
+            f"border: 1px solid {self._palette.border_strong};"
+            "border-radius: 3px;"
+        )
+        label = QLabel(text)
+        label.setObjectName("mutedText")
+
+        entry = QHBoxLayout()
+        entry.setSpacing(METRICS.space_1 + 2)
+        entry.addWidget(swatch)
+        entry.addWidget(label)
+        return entry
 
     def _configure_table(self) -> None:
         # No "data" property here: the shared table styling reacts to state, and the grid
@@ -497,10 +646,11 @@ class ScheduleGridView(QWidget):
         self._table.verticalHeader().setDefaultSectionSize(METRICS.table_row_height)
         self._table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
 
+        self._lane_header = LaneHeader(self._model, self._palette, self._table)
+        self._table.setHorizontalHeader(self._lane_header)
         header = self._table.horizontalHeader()
         header.setMinimumSectionSize(METRICS.grid_column_width)
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        header.setHighlightSections(False)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
 
         dates = self._table.verticalHeader()
@@ -514,7 +664,9 @@ class ScheduleGridView(QWidget):
     def _fit_to_rows(self) -> None:
         """Stop at the last row instead of stretching to the bottom of the window.
 
-        The layout caps this at the room available, so a long month still scrolls.
+        The cap sits on the card, not on the table: the table has to be free to fill
+        whatever the card is given, or a month collapses to its smallest size and
+        leaves the rest of the window empty.
         """
         frame = 2 * self._table.frameWidth()
         content = (
@@ -522,7 +674,7 @@ class ScheduleGridView(QWidget):
             + self._model.rowCount() * METRICS.table_row_height
             + frame
         )
-        self._table.setMaximumHeight(content)
+        self._card.setMaximumHeight(content + self._totals_view.height() + 2)
 
     def _configure_totals(self) -> None:
         """Kept in step with the grid by hand: Qt has no notion of a frozen footer."""
@@ -567,6 +719,7 @@ class ScheduleGridView(QWidget):
         self._palette = palette
         self._delegate.set_palette(palette)
         self._model.apply_palette(palette)
+        self._lane_header.set_palette(palette)
         self._back.setIcon(self._back.icon())
         set_button_icon(self._finish, "check", palette.on_accent)
 
@@ -593,8 +746,23 @@ class ScheduleGridView(QWidget):
 
     # Closing the schedule ---------------------------------------------------
 
+    def commit_open_editor(self) -> None:
+        """Write out a cell somebody is still typing in.
+
+        Qt keeps the editor alive until the view is destroyed and only then hands its
+        value to the model. Closing a schedule with an editor open therefore wrote a
+        shift *after* the schedule was marked ready, which pulled it straight back to
+        draft — and the pre-closing check never saw what had just been typed.
+        """
+        editor = self._table.findChild(QLineEdit)
+        if editor is None:
+            return
+        self._table.commitData(editor)
+        self._table.closeEditor(editor, QAbstractItemDelegate.EndEditHint.NoHint)
+
     def check(self) -> Audit:
         """What the pre-closing check finds right now. Public so tests can ask."""
+        self.commit_open_editor()
         return audit(self._model.schedule, self._model.cells)
 
     def finish_schedule(self) -> None:

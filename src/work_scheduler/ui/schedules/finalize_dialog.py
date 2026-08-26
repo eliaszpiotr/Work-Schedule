@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from work_scheduler.services.audit import Audit, Finding
-from work_scheduler.ui.components import primary_button, secondary_button
+from work_scheduler.ui.components import Glyph, primary_button, secondary_button
 from work_scheduler.ui.theme import METRICS, Palette
 
 MAX_LIST_HEIGHT = 220
@@ -48,22 +48,40 @@ class FinalizeDialog(QDialog):
         layout.setContentsMargins(
             METRICS.space_6, METRICS.space_5, METRICS.space_6, METRICS.space_5
         )
-        layout.setSpacing(METRICS.space_3)
+        layout.setSpacing(METRICS.space_4)
 
         heading = QLabel(self._headline())
-        heading.setObjectName("emptyTitle")
+        heading.setObjectName("dialogTitle")
         heading.setWordWrap(True)
-        layout.addWidget(heading)
 
         summary = QLabel(self._summary())
-        summary.setObjectName("mutedText")
+        summary.setObjectName("dialogBody")
         summary.setWordWrap(True)
-        layout.addWidget(summary)
+
+        words = QVBoxLayout()
+        words.setContentsMargins(0, 0, 0, 0)
+        words.setSpacing(METRICS.space_1 + 1)
+        words.addWidget(heading)
+        words.addWidget(summary)
+
+        top = QHBoxLayout()
+        top.setSpacing(METRICS.space_3)
+        top.addWidget(Glyph(*self._glyph(), palette), alignment=Qt.AlignmentFlag.AlignTop)
+        top.addLayout(words, stretch=1)
+        layout.addLayout(top)
 
         if self._audit.findings:
             layout.addWidget(self._findings())
 
         layout.addLayout(self._buttons(palette))
+
+    def _glyph(self) -> tuple[str, str]:
+        """The icon says which of the three states this is before the words do."""
+        if self._audit.problems:
+            return "square-pen", "warning"
+        if self._audit.notes:
+            return "square-pen", "info"
+        return "check", "info"
 
     def _headline(self) -> str:
         if self._audit.problems:
@@ -110,8 +128,11 @@ class FinalizeDialog(QDialog):
         return label
 
     def _buttons(self, palette: Palette) -> QHBoxLayout:
-        save = primary_button("Zamknij i zapisz PDF", "check", palette)
-        close = secondary_button("Tylko zamknij")
+        # "Zamknij" reads as "close this window" as readily as "close the schedule",
+        # and the two mean opposite things here. Both buttons say "zakończ" instead,
+        # which is the word on the toolbar that opened this.
+        save = primary_button("Zakończ i zapisz PDF", "check", palette)
+        close = secondary_button("Zakończ bez PDF")
         cancel = secondary_button("Anuluj")
 
         save.clicked.connect(lambda: self._finish(Outcome.CLOSE_AND_SAVE))

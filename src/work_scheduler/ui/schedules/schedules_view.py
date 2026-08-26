@@ -1,21 +1,12 @@
-from PySide6.QtCore import (
-    QAbstractTableModel,
-    QModelIndex,
-    QObject,
-    QPoint,
-    Qt,
-    Signal,
-)
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QAbstractItemView,
-    QComboBox,
+    QFrame,
     QHBoxLayout,
-    QHeaderView,
     QMenu,
     QMessageBox,
+    QScrollArea,
     QStackedWidget,
-    QTableView,
     QVBoxLayout,
     QWidget,
 )
@@ -32,70 +23,29 @@ from work_scheduler.services import (
 from work_scheduler.ui.components import (
     EmptyState,
     PageHeader,
+    SegmentedControl,
     confirm_destructive,
     primary_button,
     set_button_icon,
 )
+from work_scheduler.ui.icons import load_icon
 from work_scheduler.ui.schedules.export_actions import save_as_pdf, send_to_printer
+from work_scheduler.ui.schedules.schedule_card import CardList, ScheduleCard
 from work_scheduler.ui.schedules.schedule_dialog import ScheduleDialog
 from work_scheduler.ui.theme import METRICS, Palette
 
-STATUS_LABELS = {
-    ScheduleStatus.DRAFT: "Roboczy",
-    ScheduleStatus.FINAL: "Gotowy",
-    ScheduleStatus.ARCHIVED: "Archiwalny",
+# One row of filters, rather than a separate archive tab. The words are plural here
+# and singular on a card: the filter names a set, the badge names one schedule.
+# Archived is missing on purpose: nothing in the application ever sets that status,
+# so the filter could only ever come back empty.
+FILTER_LABELS = {
+    ScheduleStatus.DRAFT: "Robocze",
+    ScheduleStatus.FINAL: "Gotowe",
 }
-# One tab with a filter, rather than a separate archive tab.
 STATUS_FILTERS = (
     ("Wszystkie", None),
-    *((label, status) for status, label in STATUS_LABELS.items()),
+    *((label, status) for status, label in FILTER_LABELS.items()),
 )
-
-
-class ScheduleTableModel(QAbstractTableModel):
-    HEADERS = ("Nazwa", "Okres", "Osób", "Status")
-
-    def __init__(self, parent: QObject | None = None) -> None:
-        super().__init__(parent)
-        self._schedules: list[ScheduleSummary] = []
-
-    def set_schedules(self, schedules: list[ScheduleSummary]) -> None:
-        self.beginResetModel()
-        self._schedules = list(schedules)
-        self.endResetModel()
-
-    def schedule_at(self, row: int) -> ScheduleSummary | None:
-        if 0 <= row < len(self._schedules):
-            return self._schedules[row]
-        return None
-
-    def rowCount(self, parent: QModelIndex | None = None) -> int:  # noqa: N802 - Qt API
-        return 0 if parent and parent.isValid() else len(self._schedules)
-
-    def columnCount(self, parent: QModelIndex | None = None) -> int:  # noqa: N802 - Qt API
-        return 0 if parent and parent.isValid() else len(self.HEADERS)
-
-    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> str | None:
-        if not index.isValid() or role != Qt.ItemDataRole.DisplayRole:
-            return None
-
-        schedule = self._schedules[index.row()]
-        return (
-            schedule.name,
-            schedule.period,
-            str(schedule.employee_count),
-            STATUS_LABELS[schedule.status],
-        )[index.column()]
-
-    def headerData(  # noqa: N802 - Qt API
-        self,
-        section: int,
-        orientation: Qt.Orientation,
-        role: int = Qt.ItemDataRole.DisplayRole,
-    ) -> str | None:
-        if orientation is Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
-            return self.HEADERS[section]
-        return None
 
 
 class SchedulesView(QWidget):
@@ -119,9 +69,9 @@ class SchedulesView(QWidget):
         self._shifts = shifts
         self._palette = palette
 
-        self._model = ScheduleTableModel(self)
-        self._status = QComboBox()
-        self._table = QTableView()
+        self._filter = SegmentedControl(list(STATUS_FILTERS))
+        self._cards = CardList()
+        self._picked: int | None = None
         self._stack = QStackedWidget()
         self._add = primary_button("Nowy grafik", "plus", palette)
 
@@ -140,13 +90,17 @@ class SchedulesView(QWidget):
         layout.setSpacing(0)
         layout.addWidget(header)
 
-        body = QVBoxLayout()
+        # The cards need something to sit on: white on white has no edge to it.
+        # A QFrame, not a QWidget — a plain QWidget ignores a stylesheet background
+        # unless it is told to paint one, and then does it silently.
+        panel = QFrame()
+        panel.setObjectName("workspaceBody")
+        body = QVBoxLayout(panel)
         body.setContentsMargins(METRICS.space_6, METRICS.space_5, METRICS.space_6, METRICS.space_6)
         body.setSpacing(METRICS.space_4)
         body.addLayout(self._filter_row())
 
-        self._configure_table()
-        self._stack.addWidget(self._table)
+        self._stack.addWidget(self._scroller())
         self._stack.addWidget(
             EmptyState(
                 "Brak grafików",
@@ -155,66 +109,74 @@ class SchedulesView(QWidget):
             )
         )
         body.addWidget(self._stack, stretch=1)
-        layout.addLayout(body)
+        layout.addWidget(panel, stretch=1)
 
     def _filter_row(self) -> QHBoxLayout:
-        for label, status in STATUS_FILTERS:
-            self._status.addItem(label, status)
-        self._status.setAccessibleName("Filtr statusu")
-        self._status.setFixedWidth(METRICS.status_filter_width)
-        self._status.currentIndexChanged.connect(self.reload)
+        self._filter.setAccessibleName("Filtr statusu")
+        self._filter.changed.connect(lambda _: self.reload())
 
         row = QHBoxLayout()
         row.setSpacing(METRICS.space_3)
-        row.addWidget(self._status)
+        row.addWidget(self._filter)
         row.addStretch()
         return row
 
-    def _configure_table(self) -> None:
-        self._table.setProperty("data", "true")
-        self._table.setModel(self._model)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.setShowGrid(False)
-        self._table.verticalHeader().setVisible(False)
-        self._table.verticalHeader().setDefaultSectionSize(METRICS.table_row_height)
-        self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column in (1, 2, 3):
-            self._table.horizontalHeader().setSectionResizeMode(
-                column, QHeaderView.ResizeMode.ResizeToContents
-            )
-        self._table.horizontalHeader().setHighlightSections(False)
-        self._table.horizontalHeader().setDefaultAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        )
-        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._table.customContextMenuRequested.connect(self._open_context_menu)
-        self._table.doubleClicked.connect(lambda _: self.open_selected())
+    def _scroller(self) -> QScrollArea:
+        area = QScrollArea()
+        area.setObjectName("cardList")
+        area.setWidget(self._cards)
+        area.setWidgetResizable(True)
+        area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        area.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        remove = QShortcut(QKeySequence.StandardKey.Delete, self._table)
-        remove.setContext(Qt.ShortcutContext.WidgetShortcut)
+        remove = QShortcut(QKeySequence.StandardKey.Delete, area)
+        remove.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         remove.activated.connect(self.delete_selected)
+        return area
 
     # Appearance -------------------------------------------------------------
 
     def apply_palette(self, palette: Palette) -> None:
         self._palette = palette
         set_button_icon(self._add, "plus", palette.on_accent)
+        for card in self._cards.cards():
+            card.apply_palette(palette)
 
     # Data -------------------------------------------------------------------
 
     def reload(self) -> None:
-        schedules = self._schedules.list_schedules(status=self._status.currentData())
-        self._model.set_schedules(schedules)
+        chosen = self._filter.value()
+        schedules = self._schedules.list_schedules(status=chosen)
+
+        self._cards.clear()
+        for summary in schedules:
+            card = ScheduleCard(summary, self._palette)
+            card.picked.connect(self.pick)
+            card.opened.connect(self.schedule_opened.emit)
+            card.menu_requested.connect(self._open_context_menu)
+            self._cards.add(card)
+
+        # A schedule that vanished from the list cannot stay picked behind its card.
+        if self._picked not in {summary.id for summary in schedules}:
+            self._picked = None
+        self._paint_selection()
+
         # The empty state belongs to an empty database, not to an empty filter result.
-        self._stack.setCurrentIndex(0 if schedules or self._status.currentData() else 1)
+        self._stack.setCurrentIndex(0 if schedules or chosen else 1)
+
+    def pick(self, schedule_id: int) -> None:
+        self._picked = schedule_id
+        self._paint_selection()
+
+    def _paint_selection(self) -> None:
+        for card in self._cards.cards():
+            card.set_picked(card.schedule.id == self._picked)
 
     def selected_schedule(self) -> ScheduleSummary | None:
-        indexes = self._table.selectionModel().selectedRows()
-        if not indexes:
-            return None
-        return self._model.schedule_at(indexes[0].row())
+        for card in self._cards.cards():
+            if card.schedule.id == self._picked:
+                return card.schedule
+        return None
 
     # Actions ----------------------------------------------------------------
 
@@ -264,6 +226,7 @@ class SchedulesView(QWidget):
                 f"„{schedule.name}” zniknie razem ze wszystkimi wpisanymi godzinami. "
                 "Tego nie da się cofnąć.",
                 "Usuń grafik",
+                palette=self._palette,
             )
         if not confirmed:
             return
@@ -275,39 +238,37 @@ class SchedulesView(QWidget):
             return
         self.reload()
 
-    def pick_row_at(self, position: QPoint) -> None:
-        """Qt does not move the selection on a right-click, so the menu has to."""
-        index = self._table.indexAt(position)
-        if index.isValid():
-            self._table.selectRow(index.row())
-
-    def _open_context_menu(self, position: QPoint) -> None:
-        self.pick_row_at(position)
+    def _open_context_menu(self, _schedule_id: int, position: QPoint) -> None:
         if self.selected_schedule() is None:
             return
 
         menu = QMenu(self)
-        menu.addAction("Otwórz", self.open_selected)
+        self._entry(menu, "square-pen", "Otwórz", self.open_selected)
         menu.addSeparator()
         self._add_export_actions(menu)
         menu.addSeparator()
-        menu.addAction("Usuń", self.delete_selected)
-        menu.exec(self._table.viewport().mapToGlobal(position))
+        self._entry(menu, "trash-2", "Usuń", self.delete_selected)
+        menu.exec(position)
+
+    def _entry(self, menu: QMenu, icon: str, label: str, action) -> QAction:  # noqa: ANN001
+        """Menu entries carry their icon, recoloured for whichever theme is on."""
+        entry = menu.addAction(load_icon(icon, self._palette.text_secondary), label, action)
+        return entry
 
     def _add_export_actions(self, menu: QMenu) -> None:
         """Printing is offered only for a checked schedule, and says so when it is not."""
         schedule = self.selected_schedule()
         ready = schedule is not None and schedule.status is not ScheduleStatus.DRAFT
 
-        save = menu.addAction("Zapisz PDF…", self.save_selected_pdf)
-        printout = menu.addAction("Drukuj…", self.print_selected)
+        save = self._entry(menu, "file-down", "Zapisz PDF…", self.save_selected_pdf)
+        printout = self._entry(menu, "printer", "Drukuj…", self.print_selected)
         for action in (save, printout):
             action.setEnabled(ready)
             if not ready:
                 action.setToolTip("Najpierw zakończ grafik")
 
         if ready:
-            menu.addAction("Wróć do roboczego", self.reopen_selected)
+            self._entry(menu, "chevron-left", "Wróć do roboczego", self.reopen_selected)
 
     def save_selected_pdf(self) -> None:
         schedule = self.selected_schedule()

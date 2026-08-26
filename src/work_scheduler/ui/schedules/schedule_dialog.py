@@ -26,6 +26,12 @@ from work_scheduler.ui.components import (
     restyle,
     secondary_button,
 )
+from work_scheduler.ui.schedules.people_picker import (
+    NAME_ROLE,
+    PROFESSION_ROLE,
+    TRADE_ROLE,
+    PersonDelegate,
+)
 from work_scheduler.ui.settings.opening_hours_editor import OpeningHoursEditor
 from work_scheduler.ui.text import days as count_days
 from work_scheduler.ui.text import people as count_people
@@ -48,12 +54,29 @@ MONTHS = (
 )
 
 
-def suggested_name(today: date) -> str:
-    return f"{MONTHS[today.month - 1]} {today.year}"
+def suggested_name(start: date, end: date | None = None) -> str:
+    """The name the period would be given by whoever is reading it.
+
+    Within one month that is the month; across a boundary the two dates, because
+    "Sierpień" on a schedule that runs into September would be a small lie.
+    """
+    if end is None or (start.year, start.month) == (end.year, end.month):
+        return f"{MONTHS[start.month - 1]} {start.year}"
+    if start.year == end.year:
+        return f"{start:%d.%m} – {end:%d.%m.%Y}"
+    return f"{start:%d.%m.%Y} – {end:%d.%m.%Y}"
+
+
+def start_of_month(day: date) -> date:
+    return day.replace(day=1)
 
 
 def end_of_month(day: date) -> date:
-    """Schedules are usually made for the rest of a month, so that is the starting guess."""
+    """A schedule covers a month, so the whole of the current one is the opening guess.
+
+    Starting from today instead would offer a period whose name — the month — covers
+    more than the period does.
+    """
     return day.replace(day=monthrange(day.year, day.month)[1])
 
 
@@ -98,8 +121,11 @@ class ScheduleDialog(QDialog):
         self.setModal(True)
         self.setMinimumWidth(METRICS.dialog_width)
 
-        self._name = QLineEdit(suggested_name(today))
-        self._start = QDateEdit(_to_qdate(today))
+        self._name = QLineEdit(suggested_name(start_of_month(today), end_of_month(today)))
+        # Set by hand once, and the dates stop rewriting it: a name somebody typed is
+        # theirs, not a field the calendar may overwrite behind their back.
+        self._name_is_mine = False
+        self._start = QDateEdit(_to_qdate(start_of_month(today)))
         self._end = QDateEdit(_to_qdate(end_of_month(today)))
         self._people = QListWidget()
         self._hours = OpeningHoursEditor(week)
@@ -130,9 +156,11 @@ class ScheduleDialog(QDialog):
         layout.addLayout(self._buttons())
 
         self._name.textChanged.connect(self._refresh)
+        self._name.textEdited.connect(self._claim_name)
         for field in (self._start, self._end):
             field.setDisplayFormat("dd.MM.yyyy")
             field.setCalendarPopup(True)
+            field.dateChanged.connect(self._rename_for_period)
             field.dateChanged.connect(self._refresh)
             _polish_calendar(field, self._palette)
         self._people.itemChanged.connect(self._refresh)
@@ -192,15 +220,30 @@ class ScheduleDialog(QDialog):
 
     def _fill_people(self, employees: list[Employee]) -> None:
         self._people.setMaximumHeight(METRICS.people_list_height)
+        self._people.setProperty("role", "picker")
+        self._people.setItemDelegate(PersonDelegate(self._palette, self._people))
+        self._people.setSpacing(0)
+        # The real indicator is hidden — the delegate draws the box — so the row has to
+        # do the toggling. Clicking anywhere on it is the easier target anyway.
+        self._people.itemClicked.connect(self._toggle_person)
+
         for employee in employees:
-            item = QListWidgetItem(
-                f"{employee.last_name} {employee.first_name}"
-                f"  ·  {PROFESSION_LABELS[employee.profession]}"
-            )
+            name = f"{employee.last_name} {employee.first_name}"
+            # The row is painted, so the pieces travel as data rather than as one
+            # string the delegate would have to take apart again.
+            item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, employee.id)
+            item.setData(NAME_ROLE, name)
+            item.setData(TRADE_ROLE, PROFESSION_LABELS[employee.profession].lower())
+            item.setData(PROFESSION_ROLE, employee.profession)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Unchecked)
             self._people.addItem(item)
+
+    @staticmethod
+    def _toggle_person(item: QListWidgetItem) -> None:
+        checked = item.checkState() == Qt.CheckState.Checked
+        item.setCheckState(Qt.CheckState.Unchecked if checked else Qt.CheckState.Checked)
 
     # State ------------------------------------------------------------------
 
@@ -248,6 +291,15 @@ class ScheduleDialog(QDialog):
     @property
     def week(self) -> list[DayHours]:
         return self._hours.week()
+
+    def _claim_name(self, text: str) -> None:
+        """Only typing counts. ``setText`` fires textChanged, never textEdited."""
+        self._name_is_mine = bool(text.strip())
+
+    def _rename_for_period(self) -> None:
+        if self._name_is_mine:
+            return
+        self._name.setText(suggested_name(self.start_date, self.end_date))
 
     def _refresh(self) -> None:
         """Says what will be built, and refuses to build something impossible."""
