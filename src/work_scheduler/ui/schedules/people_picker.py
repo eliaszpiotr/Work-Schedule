@@ -16,6 +16,17 @@ CHECKBOX = 18
 GAP = METRICS.space_3
 
 
+def is_checked(index: QModelIndex) -> bool:
+    """Compared by value, never by identity.
+
+    A check state carried through a Qt model arrives back as a plain ``int``, and an
+    ``int`` is never equal to the enum member — so the test quietly answered "no" for
+    every row and the picker drew empty boxes however many people were ticked. The same
+    trap the profession badge fell into.
+    """
+    return index.data(Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Checked.value
+
+
 class PersonDelegate(QStyledItemDelegate):
     """Rows in the picker drawn the way the employees screen draws them.
 
@@ -35,7 +46,7 @@ class PersonDelegate(QStyledItemDelegate):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         box = QRectF(option.rect)
-        checked = index.data(Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Checked
+        checked = is_checked(index)
 
         if option.state & QStyle.StateFlag.State_MouseOver:
             painter.fillRect(option.rect, QColor(self._palette.surface_hover))
@@ -45,7 +56,11 @@ class PersonDelegate(QStyledItemDelegate):
         self._draw_name(painter, box, left, index)
 
         painter.setPen(QPen(QColor(self._palette.border), 1))
-        painter.drawLine(box.bottomLeft(), box.bottomRight())
+        if index.row() < index.model().rowCount() - 1:
+            # The list widget owns the outside border. Drawing another line under its
+            # final row made the lower edge look thicker and slightly offset.
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+            painter.drawLine(box.bottomLeft(), box.bottomRight())
         painter.restore()
 
     # Pieces -----------------------------------------------------------------
