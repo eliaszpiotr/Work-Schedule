@@ -8,11 +8,21 @@ version = "0.2.0"
 description = "Desktop application for planning employee work schedules"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "AGPL-3.0-only"
+authors = [
+    { name = "Eliasz Piotr" },
+]
 dependencies = [
     "PySide6>=6.7,<7",
     "SQLAlchemy>=2.0,<3",
     "alembic>=1.14,<2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/eliaszpiotr/Work-Schedule"
+Repository = "https://github.com/eliaszpiotr/Work-Schedule"
+Issues = "https://github.com/eliaszpiotr/Work-Schedule/issues"
+Releases = "https://github.com/eliaszpiotr/Work-Schedule/releases"
 
 [project.optional-dependencies]
 dev = [
@@ -46,6 +56,11 @@ work_scheduler = [
 addopts = "-ra"
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "unit: isolated business logic without database, filesystem, or application windows",
+    "integration: tests crossing database, filesystem, migration, service, or PDF boundaries",
+    "ui: Qt widgets, rendering, and complete user workflows",
+]
 
 [tool.ruff]
 line-length = 100
