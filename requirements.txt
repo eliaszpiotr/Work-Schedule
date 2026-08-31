@@ -16,9 +16,9 @@
 alembic==1.19.1
 Mako==1.4.1
 MarkupSafe==3.0.3
-PySide6==6.11.1
-PySide6_Addons==6.11.1
-PySide6_Essentials==6.11.1
-shiboken6==6.11.1
-SQLAlchemy==2.0.51
+PySide6==6.11.2
+PySide6_Addons==6.11.2
+PySide6_Essentials==6.11.2
+shiboken6==6.11.2
+SQLAlchemy==2.0.52
 typing_extensions==4.16.0

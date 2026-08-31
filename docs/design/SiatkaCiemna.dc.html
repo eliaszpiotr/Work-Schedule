@@ -1,0 +1,315 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    :root{
+      --bg:#1E1E1E; --surface:#252525; --elev:#2A2A2A; --hover:#303030; --active:#353535;
+      --text:#ECECEC; --text2:#A8A8A8; --muted:#777777;
+      --line:#343434; --line2:#454545;
+      --accent:#ECECEC; --on:#1E1E1E;
+      --ok:#68B183; --warn:#D3A353; --warnbg:#3B3018;
+      --holi:#1F2E42; --holiink:#7FA3D4; --danger:#E0736B; --dangerbg:#33201F;
+      --sat:#2C2C2C; --sun:#333333;
+    }
+    *{box-sizing:border-box;}
+    body{margin:0;font-family:Inter,-apple-system,'Segoe UI',sans-serif;color:var(--text);
+         background:var(--bg);-webkit-font-smoothing:antialiased;}
+    a{color:var(--ok);} a:hover{color:#8FC7A4;}
+    svg{display:block;flex:none;}
+  </style>
+</helmet>
+
+<div style="width:1180px;height:760px;display:flex;background:var(--bg);overflow:hidden">
+
+  <!-- Pasek boczny zwężony, bo siatka potrzebuje szerokości -->
+  <div style="width:72px;flex:none;background:var(--surface);border-right:1px solid var(--line);
+              display:flex;flex-direction:column;align-items:center;padding:20px 0 16px 0;gap:6px">
+    <div style="width:32px;height:32px;border-radius:8px;background:var(--accent);
+                display:flex;align-items:center;justify-content:center;margin-bottom:12px">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1E1E1E"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+        <path d="M16 2v4M8 2v4M3 10h18"></path></svg>
+    </div>
+    <div style="width:44px;height:38px;border-radius:8px;background:var(--active);
+                display:flex;align-items:center;justify-content:center">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+        <path d="M16 2v4M8 2v4M3 10h18"></path></svg>
+    </div>
+    <div style="width:44px;height:38px;border-radius:8px;display:flex;align-items:center;
+                justify-content:center;color:var(--muted)">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+        <circle cx="9" cy="7" r="4"></circle></svg>
+    </div>
+    <div style="width:44px;height:38px;border-radius:8px;display:flex;align-items:center;
+                justify-content:center;color:var(--muted)">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M20 12h2M2 12h2M12 2v2M12 20v2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"></path></svg>
+    </div>
+  </div>
+
+  <div style="flex-grow:1;display:flex;flex-direction:column;min-width:0">
+
+    <!-- Pasek grafiku -->
+    <div style="height:64px;flex:none;display:flex;align-items:center;gap:12px;padding:0 20px;
+                border-bottom:1px solid var(--line)">
+      <div style="width:30px;height:30px;border-radius:6px;border:1px solid var(--line2);
+                  display:flex;align-items:center;justify-content:center;color:var(--text2)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 18l-6-6 6-6"></path></svg>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:1px">
+        <div style="display:flex;align-items:center;gap:9px">
+          <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">Sierpień 2026</div>
+          <div style="display:flex;align-items:center;gap:5px;height:21px;padding:0 9px;
+                      border-radius:11px;background:var(--hover);border:1px solid var(--line2);
+                      font-size:11px;font-weight:500;color:var(--text2)">
+            <span style="width:6px;height:6px;border-radius:3px;background:var(--muted)"></span>Roboczy
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--muted)">24.08.2026 – 06.09.2026 · 14 dni · 4 osoby</div>
+      </div>
+      <div style="flex-grow:1"></div>
+      <div style="display:flex;align-items:center;gap:7px;height:34px;padding:0 14px;
+                  border-radius:6px;background:var(--accent);color:var(--on);
+                  font-size:13px;font-weight:500">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6L9 17l-5-5"></path></svg>
+        Zakończ grafik
+      </div>
+      <div style="width:34px;height:34px;border-radius:6px;border:1px solid var(--line2);
+                  display:flex;align-items:center;justify-content:center;color:var(--text2)">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle>
+          <circle cx="19" cy="12" r="1.6"></circle></svg>
+      </div>
+    </div>
+
+    <div style="flex-grow:1;padding:14px 20px 18px 20px;background:var(--surface);
+                display:flex;flex-direction:column;gap:10px;min-height:0">
+
+      <!-- Legenda: dziś kolory nic nie mówią, dopóki ktoś nie zgadnie -->
+      <div style="display:flex;align-items:center;gap:16px;padding:0 2px">
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+          <span style="width:11px;height:11px;border-radius:3px;background:var(--dangerbg);
+                       border:1px solid #5A322E"></span>brak magistra</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+          <span style="width:11px;height:11px;border-radius:3px;background:var(--warnbg);
+                       border:1px solid #5C4A29"></span>poza otwarciem</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+          <span style="width:11px;height:11px;border-radius:3px;background:var(--holi);
+                       border:1px solid #2E4869"></span>święto</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+          <span style="width:11px;height:11px;border-radius:3px;background:var(--sun);
+                       border:1px solid var(--line2)"></span>zamknięte</div>
+        <div style="flex-grow:1"></div>
+        <div style="font-size:12px;color:var(--muted)">Wpisz np. 10-15 albo 8:30-16:00</div>
+      </div>
+
+      <!-- Siatka w karcie -->
+      <div style="background:var(--elev);border:1px solid var(--line);border-radius:12px;
+                  overflow:hidden;display:flex;flex-direction:column">
+
+        <!-- Nagłówek kolumn -->
+        <div style="display:flex;background:var(--surface);border-bottom:1px solid var(--line2)">
+          <div style="width:150px;flex:none;padding:10px 14px;font-size:11px;font-weight:600;
+                      color:var(--muted);letter-spacing:0.04em">DZIEŃ</div>
+          <div style="flex-grow:1;display:flex;flex-direction:column;align-items:center;gap:2px;
+                      padding:8px 6px;border-left:1px solid var(--line)">
+            <div style="font-size:13px;font-weight:600">Kowalska Anna</div>
+            <div style="font-size:10px;font-weight:500;color:var(--holiink);background:var(--holi);
+                        padding:1px 7px;border-radius:8px">magister</div>
+          </div>
+          <div style="flex-grow:1;display:flex;flex-direction:column;align-items:center;gap:2px;
+                      padding:8px 6px;border-left:1px solid var(--line)">
+            <div style="font-size:13px;font-weight:600">Nowak Marek</div>
+            <div style="font-size:10px;font-weight:500;color:var(--holiink);background:var(--holi);
+                        padding:1px 7px;border-radius:8px">magister</div>
+          </div>
+          <div style="flex-grow:1;display:flex;flex-direction:column;align-items:center;gap:2px;
+                      padding:8px 6px;border-left:1px solid var(--line)">
+            <div style="font-size:13px;font-weight:600">Lewandowska Zofia</div>
+            <div style="font-size:10px;font-weight:500;color:var(--text2);background:var(--active);
+                        padding:1px 7px;border-radius:8px">technik</div>
+          </div>
+          <div style="flex-grow:1;display:flex;flex-direction:column;align-items:center;gap:2px;
+                      padding:8px 6px;border-left:1px solid var(--line)">
+            <div style="font-size:13px;font-weight:600">Dąbrowski Piotr</div>
+            <div style="font-size:10px;font-weight:500;color:var(--text2);background:var(--active);
+                        padding:1px 7px;border-radius:8px">technik</div>
+          </div>
+        </div>
+
+        <!-- Wiersz: dzień z brakiem magistra -->
+        <div style="display:flex;height:34px;background:var(--dangerbg);border-bottom:1px solid var(--line)">
+          <div style="width:150px;flex:none;display:flex;align-items:center;padding:0 14px 0 17px">
+            <span style="font-size:13px;font-weight:600">pn 24.08</span></div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px;color:var(--muted)"></div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">10:00–16:00</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">14:00–20:00</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">10:00–16:00</div>
+        </div>
+
+        <!-- Zwykłe dni -->
+        <div style="display:flex;height:34px;border-bottom:1px solid var(--line)">
+          <div style="width:150px;flex:none;display:flex;align-items:center;gap:8px;padding:0 14px 0 17px">
+            <span style="font-size:13px;font-weight:600">wt 25.08</span></div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">08:00–14:00</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">10:00–16:00</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">14:00–20:00</div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+        </div>
+
+        <!-- Komórka w edycji -->
+        <div style="display:flex;height:34px;border-bottom:1px solid var(--line)">
+          <div style="width:150px;flex:none;display:flex;align-items:center;padding:0 14px 0 17px">
+            <span style="font-size:13px;font-weight:600">śr 26.08</span></div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">08:00–14:00</div>
+          <div style="flex-grow:1;border-left:1px solid var(--line);padding:3px">
+            <div style="height:100%;border-radius:5px;border:2px solid var(--accent);
+                        display:flex;align-items:center;justify-content:center;font-size:13px;
+                        font-weight:500">10-16<span style="width:1px;height:15px;
+                        background:var(--accent);margin-left:1px"></span></div>
+          </div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">10:00–16:00</div>
+        </div>
+
+        <div style="display:flex;height:34px;border-bottom:1px solid var(--line)">
+          <div style="width:150px;flex:none;display:flex;align-items:center;padding:0 14px 0 17px">
+            <span style="font-size:13px;font-weight:600">cz 27.08</span></div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">08:00–14:00</div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">14:00–20:00</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">10:00–16:00</div>
+        </div>
+
+        <!-- Komórka poza godzinami otwarcia -->
+        <div style="display:flex;height:34px;border-bottom:1px solid var(--line)">
+          <div style="width:150px;flex:none;display:flex;align-items:center;padding:0 14px 0 17px">
+            <span style="font-size:13px;font-weight:600">pt 28.08</span></div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px;background:var(--warnbg);
+                      color:#E0C083;font-weight:500">06:00–14:00</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">10:00–16:00</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">14:00–20:00</div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+        </div>
+
+        <!-- Sobota -->
+        <div style="display:flex;height:34px;background:var(--sat);border-bottom:1px solid var(--line)">
+          <div style="width:150px;flex:none;display:flex;align-items:center;gap:7px;padding:0 14px 0 17px">
+            <span style="font-size:13px;font-weight:600">sb 29.08</span>
+            <span style="font-size:11px;color:var(--muted)">9–14</span></div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">09:00–14:00</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">09:00–14:00</div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+        </div>
+
+        <!-- Niedziela zamknięta: pas bez napisu, kolor niesie treść -->
+        <div style="display:flex;height:34px;background:var(--sun);border-bottom:1px solid var(--line)">
+          <div style="width:150px;flex:none;display:flex;align-items:center;gap:7px;padding:0 14px 0 17px">
+            <span style="font-size:13px;font-weight:600;color:var(--text2)">nd 30.08</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--muted)"
+                 stroke-width="2.2" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"></rect>
+              <path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg></div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+        </div>
+
+        <!-- Święto -->
+        <div style="display:flex;height:34px;background:var(--holi);border-bottom:1px solid var(--line)">
+          <div style="width:150px;flex:none;display:flex;align-items:center;gap:7px;padding:0 14px 0 17px">
+            <span style="font-size:13px;font-weight:600;color:var(--holiink)">pn 31.08</span></div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:12px;color:var(--holiink)">
+            Wniebowzięcie NMP</div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+        </div>
+
+        <div style="display:flex;height:34px;border-bottom:1px solid var(--line)">
+          <div style="width:150px;flex:none;display:flex;align-items:center;padding:0 14px 0 17px">
+            <span style="font-size:13px;font-weight:600">wt 01.09</span></div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">08:00–14:00</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">10:00–16:00</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">14:00–20:00</div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+        </div>
+
+        <div style="display:flex;height:34px;border-bottom:1px solid var(--line)">
+          <div style="width:150px;flex:none;display:flex;align-items:center;padding:0 14px 0 17px">
+            <span style="font-size:13px;font-weight:600">śr 02.09</span></div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">08:00–14:00</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">10:00–16:00</div>
+          <div style="flex-grow:1;border-left:1px solid var(--line)"></div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:13px">10:00–16:00</div>
+        </div>
+
+        <!-- Sumy: przyklejone do dołu karty -->
+        <div style="display:flex;height:44px;background:var(--surface);border-top:2px solid var(--line2)">
+          <div style="width:150px;flex:none;display:flex;align-items:center;padding:0 14px 0 17px;
+                      font-size:13px;font-weight:600">Suma godzin</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:14px;font-weight:600">54 h</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:14px;font-weight:600">54 h</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:14px;font-weight:600">60 h</div>
+          <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;
+                      border-left:1px solid var(--line);font-size:14px;font-weight:600">48 h</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

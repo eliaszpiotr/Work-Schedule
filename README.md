@@ -208,12 +208,21 @@ The automated test suite covers the schema, migrations, transaction handling, bu
 ## Release Process
 
 1. Update the version in `pyproject.toml` and `src/work_scheduler/__init__.py`.
-2. Run the complete test suite and Ruff checks.
+2. Update `packaging/RELEASE_NOTES.md` to describe the new version.
 3. Merge the reviewed changes into the protected `main` branch.
-4. Create a version tag such as `v0.2.0` and prepare a draft GitHub Release.
-5. Attach the platform-specific installers, verify the release notes, and publish the release.
+4. Push a version tag such as `v0.2.0`.
 
-Desktop packages must be built separately on macOS, Windows, and Linux. Release artifacts should be created from the exact commit referenced by the version tag.
+Pushing the tag starts the `Release` workflow, which runs the test suite and Ruff, builds the desktop packages on macOS (Apple Silicon and Intel), Windows, and Linux, and opens a draft GitHub Release with the four downloads attached. Review the draft and publish it.
+
+Before creating the tag, run the workflow manually from GitHub Actions to verify all four platform builds. A tag is accepted only when it matches the versions in both `pyproject.toml` and `work_scheduler.__version__`.
+
+To build a package locally on the current platform:
+
+```bash
+pyinstaller --noconfirm --clean packaging/work-scheduler.spec
+```
+
+The builds are not code-signed, so macOS and Windows warn once on the first launch.
 
 ## Documentation
 
@@ -222,6 +231,8 @@ Technical handoff notes, architecture decisions, interface specifications, and t
 ## License
 
 Work Scheduler is licensed under the [GNU Affero General Public License v3.0 only](LICENSE).
+
+Licensing and attribution details for bundled third-party software, fonts, and icons are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 You may use, study, modify, and redistribute the software under the conditions of the AGPL. Modified versions that are distributed or made available to users over a network must preserve the same license and provide the corresponding source code.
 

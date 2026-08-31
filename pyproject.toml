@@ -31,6 +31,7 @@ dev = [
     # in front of.
     "pytest>=9.0.3,<10",
     "ruff>=0.9,<1",
+    "pyinstaller>=6.11,<7",
 ]
 
 [project.scripts]
