@@ -87,6 +87,18 @@ def test_sorting_ignores_letter_case(view: EmployeesView, service: EmployeeServi
     assert visible_names(view) == ["anna kowalska", "Marek Nowak"]
 
 
+def test_sorting_uses_polish_alphabet_independently_of_system_locale(
+    view: EmployeesView, service: EmployeeService
+) -> None:
+    service.create("Anna", "Zawadzka", Profession.PHARMACIST)
+    service.create("Celina", "Ćwik", Profession.TECHNICIAN)
+    service.create("Łucja", "Łącka", Profession.TECHNICIAN)
+    service.create("Maria", "Lis", Profession.PHARMACIST)
+    view.reload()
+
+    assert visible_names(view) == ["Celina Ćwik", "Maria Lis", "Łucja Łącka", "Anna Zawadzka"]
+
+
 def test_people_sharing_a_last_name_are_ordered_by_first_name(
     view: EmployeesView, service: EmployeeService
 ) -> None:

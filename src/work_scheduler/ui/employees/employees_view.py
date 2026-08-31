@@ -44,6 +44,26 @@ def active_label(active: bool) -> str:
 # given a separate key instead of the text on screen.
 SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 
+# A fixed alphabet keeps sorting identical on macOS, Windows and headless Linux.
+# QSortFilterProxyModel's locale-aware mode follows the host locale; CI commonly
+# runs in the C locale, where upper- and lower-case names can end up in different
+# groups. Q, V and X are included in their usual international positions so names
+# outside the Polish alphabet still sort naturally.
+_SORT_ALPHABET = "aąbcćdeęfghijklłmnńoópqrsśtuvwxyzźż"
+_SORT_RANK = {character: rank for rank, character in enumerate(_SORT_ALPHABET)}
+
+
+def polish_sort_key(value: str) -> tuple[tuple[int, str], ...]:
+    folded = value.casefold()
+    return tuple((_SORT_RANK.get(character, len(_SORT_RANK)), character) for character in folded)
+
+
+class EmployeeSortProxyModel(QSortFilterProxyModel):
+    def lessThan(self, left: QModelIndex, right: QModelIndex) -> bool:  # noqa: N802 - Qt API
+        left_value = str(left.data(self.sortRole()) or "")
+        right_value = str(right.data(self.sortRole()) or "")
+        return polish_sort_key(left_value) < polish_sort_key(right_value)
+
 
 class EmployeeTableModel(QAbstractTableModel):
     @property
@@ -111,14 +131,11 @@ class EmployeesView(QWidget):
         self._palette = palette
 
         self._model = EmployeeTableModel(self)
-        self._proxy = QSortFilterProxyModel(self)
+        self._proxy = EmployeeSortProxyModel(self)
         self._proxy.setSourceModel(self._model)
         self._proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self._proxy.setFilterKeyColumn(-1)
         self._proxy.setSortRole(SORT_ROLE)
-        self._proxy.setSortCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        # Ą, Ć, Ł and the rest belong in their Polish places, not after Z.
-        self._proxy.setSortLocaleAware(True)
 
         self._add = primary_button(t("employees.add"), "plus", palette)
         self._search = QLineEdit()
