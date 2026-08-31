@@ -16,7 +16,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.3,<9",
+    # 9.0.3 is the first release without PYSEC-2026-1845: pytest's temporary
+    # directories used a predictable name under /tmp, which another account could get
+    # in front of.
+    "pytest>=9.0.3,<10",
     "ruff>=0.9,<1",
 ]
 
