@@ -224,10 +224,6 @@ pyinstaller --noconfirm --clean packaging/work-scheduler.spec
 
 The builds are not code-signed, so macOS and Windows warn once on the first launch.
 
-## Documentation
-
-Technical handoff notes, architecture decisions, interface specifications, and the security audit are available in [`docs/`](docs/).
-
 ## License
 
 Work Scheduler is licensed under the [GNU Affero General Public License v3.0 only](LICENSE).
