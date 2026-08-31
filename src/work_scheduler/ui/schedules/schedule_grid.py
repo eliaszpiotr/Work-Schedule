@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QHeaderView,
-    QLabel,
     QLineEdit,
     QMenu,
     QStyledItemDelegate,
@@ -45,6 +44,7 @@ from work_scheduler.services.time_text import (
 from work_scheduler.ui.components import (
     PROFESSION_LABELS,
     Badge,
+    PlainLabel,
     icon_button,
     primary_button,
     restyle,
@@ -490,8 +490,8 @@ class ScheduleGridView(QWidget):
         # the card for its height cap while doing it.
         self._card = QFrame()
         self._back = icon_button("chevron-left", "Wróć do listy grafików", palette)
-        self._title = QLabel()
-        self._status = QLabel()
+        self._title = PlainLabel()
+        self._status = PlainLabel()
         self._finish = primary_button("Zakończ grafik", "check", palette)
 
         self._build()
@@ -547,7 +547,7 @@ class ScheduleGridView(QWidget):
 
         self._badge = Badge(*status_badge(self._schedule.status))
 
-        period = QLabel(
+        period = PlainLabel(
             f"{self._schedule.start_date:%d.%m.%Y} – {self._schedule.end_date:%d.%m.%Y}"
             f"  ·  {count_days(len(self._schedule.days()))}"
             f"  ·  {count_people(len(self._schedule.lanes))}"
@@ -603,21 +603,21 @@ class ScheduleGridView(QWidget):
             row.addLayout(self._legend_entry(colour, text))
 
         row.addStretch()
-        hint = QLabel("Wpisz np. 10-15 albo 8:30-16:00")
+        hint = PlainLabel("Wpisz np. 10-15 albo 8:30-16:00")
         hint.setObjectName("mutedText")
         row.addWidget(hint)
         self._legend_strip = strip
         return strip
 
     def _legend_entry(self, colour: str, text: str) -> QHBoxLayout:
-        swatch = QLabel()
+        swatch = PlainLabel()
         swatch.setFixedSize(11, 11)
         swatch.setStyleSheet(
             f"background: {colour};"
             f"border: 1px solid {self._palette.border_strong};"
             "border-radius: 3px;"
         )
-        label = QLabel(text)
+        label = PlainLabel(text)
         label.setObjectName("mutedText")
 
         entry = QHBoxLayout()

@@ -4,14 +4,18 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from work_scheduler.database.models import Employee, Profession
-from work_scheduler.ui.components import PROFESSION_LABELS, primary_button, secondary_button
+from work_scheduler.ui.components import (
+    PROFESSION_LABELS,
+    PlainLabel,
+    primary_button,
+    secondary_button,
+)
 from work_scheduler.ui.theme import METRICS
 
 
@@ -69,7 +73,7 @@ class EmployeeDialog(QDialog):
         column = QVBoxLayout()
         column.setSpacing(METRICS.space_2)
 
-        label = QLabel(text)
+        label = PlainLabel(text)
         label.setObjectName("fieldLabel")
         label.setBuddy(widget)
         widget.setAccessibleName(text)

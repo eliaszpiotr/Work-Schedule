@@ -3,7 +3,6 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
-    QLabel,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -20,7 +19,7 @@ from work_scheduler.services import (
     ScheduleService,
     ShiftService,
 )
-from work_scheduler.ui.components import BrandMark, icon_button, restyle
+from work_scheduler.ui.components import BrandMark, PlainLabel, icon_button, restyle
 from work_scheduler.ui.employees import EmployeesView
 from work_scheduler.ui.icons import load_icon
 from work_scheduler.ui.schedules.schedules_page import SchedulesPage
@@ -108,7 +107,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(METRICS.space_2)
 
         self._mark = BrandMark(self._theme.palette)
-        self._brand_name = QLabel(self._config.app_name)
+        self._brand_name = PlainLabel(self._config.app_name)
         self._brand_name.setObjectName("brand")
         self._collapse = icon_button("panel-left", COLLAPSE_TOOLTIP, self._theme.palette)
         self._collapse.clicked.connect(self.toggle_sidebar)
@@ -125,7 +124,7 @@ class MainWindow(QMainWindow):
         self._brand_row.addWidget(self._collapse)
         self._brand_row.addStretch(0)
 
-        self._section = QLabel("WIDOKI")
+        self._section = PlainLabel("WIDOKI")
         self._section.setObjectName("sectionLabel")
 
         self._navigation.setObjectName("navigation")

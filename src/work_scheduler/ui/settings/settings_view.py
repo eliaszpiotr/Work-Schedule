@@ -1,7 +1,7 @@
-from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QVBoxLayout, QWidget
 
 from work_scheduler.services import OpeningHoursService, ServiceError
-from work_scheduler.ui.components import Card, PageHeader, primary_button, restyle
+from work_scheduler.ui.components import Card, PageHeader, PlainLabel, primary_button, restyle
 from work_scheduler.ui.settings.opening_hours_editor import OpeningHoursEditor
 from work_scheduler.ui.theme import METRICS, Palette
 
@@ -18,7 +18,7 @@ class SettingsView(QWidget):
 
         self._editor = OpeningHoursEditor(service.week())
         self._save = primary_button("Zapisz")
-        self._status = QLabel()
+        self._status = PlainLabel()
         self._build()
 
     def _build(self) -> None:
@@ -31,9 +31,9 @@ class SettingsView(QWidget):
         layout.setSpacing(0)
         layout.addWidget(header)
 
-        section = QLabel("Godziny otwarcia apteki")
+        section = PlainLabel("Godziny otwarcia apteki")
         section.setObjectName("sectionTitle")
-        hint = QLabel(
+        hint = PlainLabel(
             "Nowe grafiki dostają te godziny jako punkt wyjścia. "
             "Zmiana tutaj nie rusza grafików już utworzonych."
         )

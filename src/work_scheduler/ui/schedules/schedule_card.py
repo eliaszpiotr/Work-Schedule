@@ -1,10 +1,10 @@
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from work_scheduler.database.models import ScheduleStatus
 from work_scheduler.services import ScheduleSummary
-from work_scheduler.ui.components import Badge, Card, icon_button, restyle
+from work_scheduler.ui.components import Badge, Card, PlainLabel, icon_button, restyle
 from work_scheduler.ui.text import days as count_days
 from work_scheduler.ui.text import people as count_people
 from work_scheduler.ui.theme import METRICS, Palette
@@ -54,7 +54,7 @@ class ScheduleCard(Card):
     # Construction -----------------------------------------------------------
 
     def _heading(self, summary: ScheduleSummary) -> QHBoxLayout:
-        title = QLabel(summary.name)
+        title = PlainLabel(summary.name)
         title.setObjectName("cardTitle")
 
         row = QHBoxLayout()
@@ -72,7 +72,7 @@ class ScheduleCard(Card):
             count_days(summary.day_count),
             count_people(summary.employee_count),
         ]
-        label = QLabel("  ·  ".join(parts))
+        label = PlainLabel("  ·  ".join(parts))
         label.setObjectName("secondaryText")
         return label
 

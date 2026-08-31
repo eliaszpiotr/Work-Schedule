@@ -4,14 +4,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
-    QLabel,
     QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
 from work_scheduler.services.audit import Audit, Finding
-from work_scheduler.ui.components import Glyph, primary_button, secondary_button
+from work_scheduler.ui.components import Glyph, PlainLabel, primary_button, secondary_button
 from work_scheduler.ui.theme import METRICS, Palette
 
 MAX_LIST_HEIGHT = 220
@@ -50,11 +49,11 @@ class FinalizeDialog(QDialog):
         )
         layout.setSpacing(METRICS.space_4)
 
-        heading = QLabel(self._headline())
+        heading = PlainLabel(self._headline())
         heading.setObjectName("dialogTitle")
         heading.setWordWrap(True)
 
-        summary = QLabel(self._summary())
+        summary = PlainLabel(self._summary())
         summary.setObjectName("dialogBody")
         summary.setWordWrap(True)
 
@@ -119,8 +118,8 @@ class FinalizeDialog(QDialog):
         return area
 
     @staticmethod
-    def _line(finding: Finding) -> QLabel:
-        label = QLabel(f"·  {finding.text}")
+    def _line(finding: Finding) -> PlainLabel:
+        label = PlainLabel(f"·  {finding.text}")
         label.setWordWrap(True)
         # The same tone the grid already uses for a day that cannot stand as it is.
         label.setProperty("tone", "danger" if finding.blocking else None)

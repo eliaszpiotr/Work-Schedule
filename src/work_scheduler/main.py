@@ -55,7 +55,7 @@ def main() -> int:
         QMessageBox.critical(
             None,
             config.app_name,
-            f"Nie udało się przygotować bazy danych.\n\n{error}",
+            str(error),
         )
         return 1
 

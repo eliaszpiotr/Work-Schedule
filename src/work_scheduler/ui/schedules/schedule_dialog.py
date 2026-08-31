@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QDateEdit,
     QDialog,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -22,6 +21,7 @@ from work_scheduler.services.holidays import holidays_in, holidays_within
 from work_scheduler.services.schedule_service import MAX_PERIOD_DAYS
 from work_scheduler.ui.components import (
     PROFESSION_LABELS,
+    PlainLabel,
     primary_button,
     restyle,
     secondary_button,
@@ -129,10 +129,10 @@ class ScheduleDialog(QDialog):
         self._end = QDateEdit(_to_qdate(end_of_month(today)))
         self._people = QListWidget()
         self._hours = OpeningHoursEditor(week)
-        self._hours_summary = QLabel()
+        self._hours_summary = PlainLabel()
         self._customise = secondary_button("Dostosuj…")
         self._folded_height = 0
-        self._summary = QLabel()
+        self._summary = PlainLabel()
         self._save = primary_button("Utwórz grafik")
 
         self._fill_people(employees)
@@ -208,7 +208,7 @@ class ScheduleDialog(QDialog):
         column = QVBoxLayout()
         column.setSpacing(METRICS.space_2)
 
-        label = QLabel(text)
+        label = PlainLabel(text)
         label.setObjectName("fieldLabel")
         column.addWidget(label)
 

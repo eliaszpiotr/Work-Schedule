@@ -1,9 +1,10 @@
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, time, timedelta
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from work_scheduler.database.base import utcnow
 from work_scheduler.database.models import (
     WEEKDAY_SHORT,
     Profession,
@@ -262,7 +263,10 @@ class ScheduleService:
         with session_scope(self._session_factory) as session:
             schedule = self._require(session, schedule_id)
             schedule.status = ScheduleStatus.FINAL
-            schedule.finalized_at = datetime.now()
+            # UTC, like every other timestamp in the database. Mixing the two would
+            # make the one field that records when somebody checked a schedule
+            # disagree with created_at and updated_at beside it.
+            schedule.finalized_at = utcnow()
             logger.info("Schedule %s closed", schedule_id)
 
     def reopen(self, schedule_id: int) -> None:

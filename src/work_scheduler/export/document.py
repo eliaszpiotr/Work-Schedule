@@ -1,4 +1,5 @@
 import logging
+import os
 from pathlib import Path
 
 from PySide6.QtCore import QMarginsF
@@ -6,6 +7,7 @@ from PySide6.QtGui import QPageLayout, QPageSize, QPainter, QPdfWriter
 
 from work_scheduler.export.pages import draw_grid, draw_person
 from work_scheduler.export.paint import Sheet
+from work_scheduler.privacy import create_private_file
 from work_scheduler.services.report import ScheduleReport
 
 logger = logging.getLogger(__name__)
@@ -52,15 +54,35 @@ def render(report: ScheduleReport, device) -> None:  # noqa: ANN001 - QPagedPain
 
 
 def save_pdf(report: ScheduleReport, path: Path) -> Path:
-    writer = QPdfWriter(str(path))
-    writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
-    writer.setPageMargins(MARGINS, QPageLayout.Unit.Millimeter)
-    writer.setResolution(RESOLUTION)
-    writer.setTitle(f"{report.name} — grafik pracy")
+    """Drawn beside the target and moved into place when it is whole.
 
-    render(report, writer)
-    logger.info("Wrote %s pages to %s", page_count(report), path)
-    return path
+    A printer dialog cancelled halfway, a full disk, a crash: none of them may leave a
+    half-drawn document sitting under the name the user picked, because that is the file
+    somebody prints and hangs on the wall.
+    """
+    target = Path(path)
+    scratch = target.with_name(f".{target.name}.part")
+    create_private_file(scratch)
+
+    try:
+        writer = QPdfWriter(str(scratch))
+        writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
+        writer.setPageMargins(MARGINS, QPageLayout.Unit.Millimeter)
+        writer.setResolution(RESOLUTION)
+        writer.setTitle(f"{report.name} — grafik pracy")
+
+        render(report, writer)
+        # Qt writes out the document when the writer is destroyed, so it has to go
+        # before the file is moved.
+        del writer
+
+        os.replace(scratch, target)
+    except Exception:
+        scratch.unlink(missing_ok=True)
+        raise
+
+    logger.info("Wrote %s pages to %s", page_count(report), target)
+    return target
 
 
 def print_report(report: ScheduleReport, printer) -> None:  # noqa: ANN001 - QPrinter

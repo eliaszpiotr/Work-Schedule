@@ -78,7 +78,20 @@ def danger_button(text: str) -> QPushButton:
     return _with_variant(QPushButton(text), "danger")
 
 
-class Glyph(QLabel):
+class PlainLabel(QLabel):
+    """A label that shows exactly the characters it was handed.
+
+    Qt guesses whether a string is HTML and renders it as markup when it looks like it.
+    Every name on these screens is typed into the kartoteka by somebody, so a surname
+    with an angle bracket in it would rearrange a dialog instead of appearing in it.
+    """
+
+    def __init__(self, text: str = "") -> None:
+        super().__init__(text)
+        self.setTextFormat(Qt.TextFormat.PlainText)
+
+
+class Glyph(PlainLabel):
     """A tinted square holding one icon: what is about to happen, before it is read."""
 
     def __init__(self, icon: str, tone: str, palette: Palette) -> None:
@@ -117,11 +130,11 @@ class ConfirmDialog(QDialog):
         self.setWindowTitle(title)
         self.setMinimumWidth(METRICS.dialog_width)
 
-        heading = QLabel(title)
+        heading = PlainLabel(title)
         heading.setObjectName("dialogTitle")
         heading.setWordWrap(True)
 
-        body = QLabel(message)
+        body = PlainLabel(message)
         body.setObjectName("dialogBody")
         body.setWordWrap(True)
 
@@ -204,7 +217,7 @@ class PageHeader(QFrame):
         self._layout.setContentsMargins(METRICS.space_6, 0, METRICS.space_6, 0)
         self._layout.setSpacing(METRICS.space_2)
 
-        heading = QLabel(title)
+        heading = PlainLabel(title)
         heading.setObjectName("pageTitle")
         self._layout.addWidget(heading)
         self._layout.addStretch()
@@ -227,11 +240,11 @@ class EmptyState(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.setSpacing(METRICS.space_2)
 
-        heading = QLabel(title)
+        heading = PlainLabel(title)
         heading.setObjectName("emptyTitle")
         heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        subtitle = QLabel(description)
+        subtitle = PlainLabel(description)
         subtitle.setObjectName("mutedText")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -260,7 +273,7 @@ def initials(name: str) -> str:
     return (parts[0][0] + parts[1][0]).upper()
 
 
-class Avatar(QLabel):
+class Avatar(PlainLabel):
     """A circle with someone's initials, where a photograph would be if we had one."""
 
     def __init__(self, name: str, *, accent: bool = False) -> None:
@@ -270,7 +283,7 @@ class Avatar(QLabel):
         self.setAccessibleName(name)
 
 
-class Badge(QLabel):
+class Badge(PlainLabel):
     """A state said in one glance. The tone chooses the colour; the word carries it."""
 
     TONES = ("neutral", "success", "info", "muted")
@@ -348,7 +361,7 @@ class SegmentedControl(QWidget):
         self._group.button(self._values.index(value)).setChecked(True)
 
 
-class BrandMark(QLabel):
+class BrandMark(PlainLabel):
     """The filled square in the sidebar holding the application's icon."""
 
     def __init__(self, palette: Palette) -> None:

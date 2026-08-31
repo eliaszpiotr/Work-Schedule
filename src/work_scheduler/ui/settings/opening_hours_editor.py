@@ -2,10 +2,11 @@ from dataclasses import dataclass
 from datetime import time
 
 from PySide6.QtCore import Qt, QTime
-from PySide6.QtWidgets import QCheckBox, QGridLayout, QLabel, QTimeEdit, QWidget
+from PySide6.QtWidgets import QCheckBox, QGridLayout, QTimeEdit, QWidget
 
 from work_scheduler.database.models import WEEKDAY_NAMES
 from work_scheduler.services import DEFAULT_WEEK, DayHours
+from work_scheduler.ui.components import PlainLabel
 from work_scheduler.ui.theme import METRICS
 
 TIME_FORMAT = "HH:mm"
@@ -47,7 +48,7 @@ class OpeningHoursEditor(QWidget):
         self.set_week(list(week or DEFAULT_WEEK))
 
     def _build_row(self, layout: QGridLayout, weekday: int, name: str) -> DayRow:
-        label = QLabel(name.capitalize())
+        label = PlainLabel(name.capitalize())
         label.setMinimumWidth(METRICS.weekday_label_width)
 
         open_switch = QCheckBox("otwarte")
@@ -59,7 +60,7 @@ class OpeningHoursEditor(QWidget):
             field.setAccessibleName(f"{name} {role}")
             field.setFixedWidth(METRICS.time_field_width)
 
-        separator = QLabel("–")
+        separator = PlainLabel("–")
         separator.setObjectName("mutedText")
 
         open_switch.toggled.connect(opens.setEnabled)

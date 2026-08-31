@@ -6,6 +6,7 @@ from PySide6.QtCore import QByteArray, QRectF, QSize, Qt
 from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
+from work_scheduler.privacy import create_data_directory
 from work_scheduler.ui.resources import ICON_CACHE_DIR, ICONS_DIR
 
 DEFAULT_SIZE = 18
@@ -47,7 +48,7 @@ def load_icon(name: str, color: str, size: int = DEFAULT_SIZE) -> QIcon:
 def icon_file(name: str, color: str) -> Path:
     """A recoloured copy on disk, for stylesheet rules that take a file path."""
     markup = _markup(name, color)
-    ICON_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    create_data_directory(ICON_CACHE_DIR)
 
     digest = hashlib.sha256(f"{name}{color}".encode()).hexdigest()[:12]
     target = ICON_CACHE_DIR / f"{name}-{digest}.svg"
