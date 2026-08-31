@@ -5,16 +5,23 @@ from PySide6.QtPrintSupport import QPrintDialog, QPrinter
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QWidget
 
 from work_scheduler.export import print_report, save_pdf
+from work_scheduler.i18n import Language, t, translate
 from work_scheduler.services import ScheduleService, ServiceError, ShiftService
 from work_scheduler.services.report import ScheduleReport, build_report, suggested_filename
+from work_scheduler.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-PDF_FILTER = "Dokument PDF (*.pdf)"
 
-
-def build(schedules: ScheduleService, shifts: ShiftService, schedule_id: int) -> ScheduleReport:
-    return build_report(schedules.open_schedule(schedule_id), shifts.grid(schedule_id))
+def build(
+    schedules: ScheduleService,
+    shifts: ShiftService,
+    schedule_id: int,
+    language: Language | None = None,
+) -> ScheduleReport:
+    """The sheet is written in the printout language, which need not be the interface's."""
+    language = language or Settings().language_for_print()
+    return build_report(schedules.open_schedule(schedule_id), shifts.grid(schedule_id), language)
 
 
 def save_as_pdf(
@@ -29,15 +36,15 @@ def save_as_pdf(
     try:
         report = build(schedules, shifts, schedule_id)
     except ServiceError as error:
-        QMessageBox.warning(parent, "Nie udało się", str(error))
+        QMessageBox.warning(parent, t("common.failed"), str(error))
         return None
 
     if path is None:
         chosen, _ = QFileDialog.getSaveFileName(
             parent,
-            "Zapisz grafik jako PDF",
+            t("export.save_title"),
             str(Path.home() / suggested_filename(report)),
-            PDF_FILTER,
+            t("export.pdf_filter"),
         )
         if not chosen:
             return None
@@ -52,7 +59,7 @@ def save_as_pdf(
         save_pdf(report, path)
     except OSError as error:
         logger.exception("Could not write %s", path)
-        QMessageBox.warning(parent, "Nie udało się zapisać", str(error))
+        QMessageBox.warning(parent, t("export.save_failed"), str(error))
         return None
     return path
 
@@ -69,12 +76,12 @@ def send_to_printer(
     try:
         report = build(schedules, shifts, schedule_id)
     except ServiceError as error:
-        QMessageBox.warning(parent, "Nie udało się", str(error))
+        QMessageBox.warning(parent, t("common.failed"), str(error))
         return False
 
     if printer is None:
         printer = QPrinter(QPrinter.PrinterMode.HighResolution)
-        printer.setDocName(f"{report.name} — grafik pracy")
+        printer.setDocName(translate("export.document_name", report.language, name=report.name))
         if QPrintDialog(printer, parent).exec() != QPrintDialog.DialogCode.Accepted:
             return False
 

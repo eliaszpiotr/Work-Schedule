@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from work_scheduler.i18n import t
 from work_scheduler.services.audit import Audit, Finding
 from work_scheduler.ui.components import Glyph, PlainLabel, primary_button, secondary_button
 from work_scheduler.ui.theme import METRICS, Palette
@@ -34,7 +35,7 @@ class FinalizeDialog(QDialog):
         self._audit = audit
         self._outcome = Outcome.CANCEL
 
-        self.setWindowTitle("Zakończ grafik")
+        self.setWindowTitle(t("finalize.title"))
         self.setMinimumWidth(METRICS.dialog_width)
         self._build(palette)
 
@@ -84,20 +85,17 @@ class FinalizeDialog(QDialog):
 
     def _headline(self) -> str:
         if self._audit.problems:
-            return "Grafik wygląda na niedokończony"
+            return t("finalize.unfinished")
         if self._audit.notes:
-            return "Grafik jest gotowy, ale zerknij na uwagi"
-        return "Grafik jest gotowy"
+            return t("finalize.ready_with_notes")
+        return t("finalize.ready")
 
     def _summary(self) -> str:
         if self._audit.problems:
-            return (
-                "Możesz go mimo to zamknąć — zamknięcie niczego nie blokuje i w każdej "
-                "chwili da się wrócić do edycji."
-            )
+            return t("finalize.can_close_anyway")
         if self._audit.notes:
-            return "Żadna z uwag nie stoi na przeszkodzie, żeby grafik zamknąć i wydrukować."
-        return "Sprawdzenie nie wykazało niczego. Można drukować."
+            return t("finalize.notes_ok")
+        return t("finalize.clean")
 
     def _findings(self) -> QWidget:
         body = QWidget()
@@ -130,9 +128,9 @@ class FinalizeDialog(QDialog):
         # "Zamknij" reads as "close this window" as readily as "close the schedule",
         # and the two mean opposite things here. Both buttons say "zakończ" instead,
         # which is the word on the toolbar that opened this.
-        save = primary_button("Zakończ i zapisz PDF", "check", palette)
-        close = secondary_button("Zakończ bez PDF")
-        cancel = secondary_button("Anuluj")
+        save = primary_button(t("finalize.close_and_save"), "check", palette)
+        close = secondary_button(t("finalize.close_only"))
+        cancel = secondary_button(t("common.cancel"))
 
         save.clicked.connect(lambda: self._finish(Outcome.CLOSE_AND_SAVE))
         close.clicked.connect(lambda: self._finish(Outcome.CLOSE))

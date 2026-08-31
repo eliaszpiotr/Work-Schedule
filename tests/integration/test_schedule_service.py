@@ -10,6 +10,7 @@ from work_scheduler.services import (
     DayHours,
     EmployeeService,
     ScheduleService,
+    ShiftService,
     ValidationError,
 )
 from work_scheduler.services.schedule_service import days_between
@@ -200,6 +201,61 @@ class TestHolidays:
 
         assert len(timeline) == 14
         assert [info.day for info in timeline][:2] == [date(2026, 8, 10), date(2026, 8, 11)]
+
+
+class TestChangingTheTeam:
+    def test_a_person_can_be_added_without_replacing_existing_columns(
+        self,
+        engine: Engine,
+        service: ScheduleService,
+        staff: list[int],
+        employees: EmployeeService,
+    ) -> None:
+        schedule_id = make(service, staff)
+        before = service.open_schedule(schedule_id)
+        extra = employees.create("Ewa", "Bąk", Profession.TECHNICIAN)
+
+        service.update_employees(schedule_id, [*staff, extra.id])
+        after = service.open_schedule(schedule_id)
+
+        assert [lane.employee_id for lane in after.lanes] == [*staff, extra.id]
+        assert [lane.id for lane in after.lanes[:2]] == [lane.id for lane in before.lanes]
+
+    def test_removing_a_person_removes_only_that_columns_shifts(
+        self, engine: Engine, service: ScheduleService, staff: list[int]
+    ) -> None:
+        schedule_id = make(service, staff)
+        schedule = service.open_schedule(schedule_id)
+        shifts = ShiftService(create_session_factory(engine))
+        for lane in schedule.lanes:
+            shifts.set_shift(lane.id, AUGUST[0], time(9), time(15))
+
+        service.update_employees(schedule_id, [staff[1]])
+        remaining = service.open_schedule(schedule_id).lanes[0]
+
+        assert remaining.employee_id == staff[1]
+        assert shifts.grid(schedule_id) == {(remaining.id, AUGUST[0]): (time(9), time(15))}
+
+    def test_a_team_change_reopens_a_finished_schedule(
+        self, service: ScheduleService, staff: list[int]
+    ) -> None:
+        schedule_id = make(service, staff)
+        service.finalize(schedule_id)
+
+        reopened = service.update_employees(schedule_id, [staff[1]])
+
+        assert reopened is True
+        assert service.open_schedule(schedule_id).status is ScheduleStatus.DRAFT
+
+    def test_an_empty_replacement_is_refused_without_changing_the_team(
+        self, service: ScheduleService, staff: list[int]
+    ) -> None:
+        schedule_id = make(service, staff)
+
+        with pytest.raises(ValidationError):
+            service.update_employees(schedule_id, [])
+
+        assert [lane.employee_id for lane in service.open_schedule(schedule_id).lanes] == staff
 
 
 class TestListing:

@@ -5,8 +5,9 @@ from datetime import time
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from work_scheduler.database.models import WEEKDAY_NAMES, OpeningHours
+from work_scheduler.database.models import OpeningHours
 from work_scheduler.database.session import session_scope
+from work_scheduler.i18n import t, weekday_name
 from work_scheduler.services.errors import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ class DayHours:
 
     @property
     def name(self) -> str:
-        return WEEKDAY_NAMES[self.weekday]
+        return weekday_name(self.weekday)
 
 
 # Sunday closed, Saturday short: the usual shape of a family pharmacy's week.
@@ -42,19 +43,15 @@ DEFAULT_WEEK = (
 def validate_week(week: list[DayHours]) -> None:
     """Shared by the settings screen and the schedule wizard, which edit the same shape."""
     if sorted(day.weekday for day in week) != list(range(DAYS_IN_WEEK)):
-        raise ValidationError("Godziny otwarcia muszą opisywać każdy dzień tygodnia dokładnie raz.")
+        raise ValidationError(t("hours.error.every_day_once"))
 
     for day in week:
         if day.opens is None and day.closes is None:
             continue
         if day.opens is None or day.closes is None:
-            raise ValidationError(
-                f"{day.name.capitalize()}: podaj obie godziny albo zaznacz dzień jako zamknięty."
-            )
+            raise ValidationError(t("hours.error.both_or_closed", day=day.name.capitalize()))
         if day.closes <= day.opens:
-            raise ValidationError(
-                f"{day.name.capitalize()}: godzina zamknięcia musi być późniejsza niż otwarcia."
-            )
+            raise ValidationError(t("hours.error.close_after_open", day=day.name.capitalize()))
 
 
 class OpeningHoursService:

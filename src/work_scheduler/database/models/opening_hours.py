@@ -9,18 +9,6 @@ from work_scheduler.database.base import Base
 if TYPE_CHECKING:
     from work_scheduler.database.models.schedule import Schedule
 
-# Monday is 0, the same numbering date.weekday() uses.
-WEEKDAY_NAMES = (
-    "poniedziałek",
-    "wtorek",
-    "środa",
-    "czwartek",
-    "piątek",
-    "sobota",
-    "niedziela",
-)
-WEEKDAY_SHORT = ("pn", "wt", "śr", "cz", "pt", "sb", "nd")
-
 
 def _both_or_neither(name: str) -> CheckConstraint:
     """Empty hours mean the day is closed, so a half-filled pair must not exist.

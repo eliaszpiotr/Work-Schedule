@@ -17,6 +17,18 @@ from work_scheduler.database.session import (  # noqa: E402
 )
 from work_scheduler.main import create_application  # noqa: E402
 
+TEST_CATEGORIES = {"unit", "integration", "ui"}
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Give every test the marker matching its top-level test directory."""
+    tests_root = Path(__file__).parent
+    for item in items:
+        relative = item.path.relative_to(tests_root)
+        category = relative.parts[0]
+        if category in TEST_CATEGORIES:
+            item.add_marker(getattr(pytest.mark, category))
+
 
 @pytest.fixture(scope="session")
 def application(tmp_path_factory: pytest.TempPathFactory):

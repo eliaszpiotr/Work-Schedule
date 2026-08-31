@@ -4,7 +4,7 @@ from datetime import time
 from PySide6.QtCore import Qt, QTime
 from PySide6.QtWidgets import QCheckBox, QGridLayout, QTimeEdit, QWidget
 
-from work_scheduler.database.models import WEEKDAY_NAMES
+from work_scheduler.i18n import t, weekday_name
 from work_scheduler.services import DEFAULT_WEEK, DayHours
 from work_scheduler.ui.components import PlainLabel
 from work_scheduler.ui.theme import METRICS
@@ -42,7 +42,8 @@ class OpeningHoursEditor(QWidget):
         layout.setVerticalSpacing(METRICS.space_2)
         layout.setColumnStretch(4, 1)
 
-        for weekday, name in enumerate(WEEKDAY_NAMES):
+        for weekday in range(7):
+            name = weekday_name(weekday)
             self.rows.append(self._build_row(layout, weekday, name))
 
         self.set_week(list(week or DEFAULT_WEEK))
@@ -51,11 +52,11 @@ class OpeningHoursEditor(QWidget):
         label = PlainLabel(name.capitalize())
         label.setMinimumWidth(METRICS.weekday_label_width)
 
-        open_switch = QCheckBox("otwarte")
-        open_switch.setAccessibleName(f"{name} otwarte")
+        open_switch = QCheckBox(t("hours.open_suffix").strip())
+        open_switch.setAccessibleName(f"{name}{t('hours.open_suffix')}")
 
         opens, closes = QTimeEdit(), QTimeEdit()
-        for field, role in ((opens, "otwarcie"), (closes, "zamknięcie")):
+        for field, role in ((opens, t("wizard.from")), (closes, t("hours.close_label"))):
             field.setDisplayFormat(TIME_FORMAT)
             field.setAccessibleName(f"{name} {role}")
             field.setFixedWidth(METRICS.time_field_width)
@@ -95,10 +96,10 @@ class OpeningHoursEditor(QWidget):
         """One line for the wizard, so it does not have to show the whole table."""
         open_days = [day for day in self.week() if not day.closed]
         if not open_days:
-            return "Zamknięte przez cały tydzień"
+            return t("hours.closed_all_week")
 
         hours = {(day.opens, day.closes) for day in open_days}
         if len(hours) == 1:
             opens, closes = next(iter(hours))
-            return f"{len(open_days)} dni w tygodniu, {opens:%H:%M}–{closes:%H:%M}"
-        return f"{len(open_days)} dni w tygodniu, różne godziny"
+            return t("hours.summary", days=len(open_days), hours=f"{opens:%H:%M}–{closes:%H:%M}")
+        return t("hours.summary_varied", days=len(open_days))

@@ -2,7 +2,6 @@ from datetime import date, timedelta
 
 from PySide6.QtCore import QPointF, QRectF
 
-from work_scheduler.database.models import WEEKDAY_SHORT
 from work_scheduler.export.paint import (
     CLOSED_FILL,
     HAIRLINE,
@@ -17,39 +16,10 @@ from work_scheduler.export.paint import (
     SUNDAY_FILL,
     Sheet,
 )
+from work_scheduler.i18n import Language, month_name, month_short, translate, weekday_short
 from work_scheduler.services.report import Person, ScheduleReport
 from work_scheduler.services.schedule_service import DayInfo
 from work_scheduler.services.time_text import format_hours, format_range
-from work_scheduler.ui.text import people as count_people
-
-MONTHS_IN = (
-    "stycznia",
-    "lutego",
-    "marca",
-    "kwietnia",
-    "maja",
-    "czerwca",
-    "lipca",
-    "sierpnia",
-    "września",
-    "października",
-    "listopada",
-    "grudnia",
-)
-MONTHS_SHORT = (
-    "sty",
-    "lut",
-    "mar",
-    "kwi",
-    "maj",
-    "cze",
-    "lip",
-    "sie",
-    "wrz",
-    "paź",
-    "lis",
-    "gru",
-)
 
 # The whole period has to land on one sheet, so nothing here may grow without limit.
 MAX_ROW_HEIGHT = 26
@@ -77,45 +47,35 @@ def day_fill(info: DayInfo):  # noqa: ANN201 - QColor or nothing
 
 
 def open_runs(days: list[DayInfo]) -> list[tuple[int, int]]:
-    """Stretches of rows the column rules may cross, as half-open index ranges.
+    """The stretch of rows the column rules cross: all of them, in one piece.
 
-    Only a holiday breaks a run, because only a holiday writes its name across the
-    row. A shut Sunday keeps every line the other days have and says it is shut with
-    its colour alone — a row missing its rules reads as a hole in the table.
+    A holiday used to break the run so its name could span the row untouched, but the
+    gap read as a hole punched through the table. The name now stays inside one cell,
+    and the rules are drawn continuously across the complete period.
     """
-    runs: list[tuple[int, int]] = []
-    start: int | None = None
-    for index, day in enumerate(days):
-        if day.holiday:
-            if start is not None:
-                runs.append((start, index))
-                start = None
-        elif start is None:
-            start = index
-    if start is not None:
-        runs.append((start, len(days)))
-    return runs
+    return [(0, len(days))] if days else []
 
 
 def period_words(report: ScheduleReport) -> str:
     """The period as a person would say it: "25 sierpnia – 1 września 2026"."""
-    start, end = report.start_date, report.end_date
+    start, end, lang = report.start_date, report.end_date, report.language
     if (start.year, start.month) == (end.year, end.month):
-        return f"{start.day}–{end.day} {MONTHS_IN[start.month - 1]} {start.year}"
+        return f"{start.day}–{end.day} {month_name(start.month, lang)} {start.year}"
     if start.year == end.year:
         return (
-            f"{start.day} {MONTHS_IN[start.month - 1]} – "
-            f"{end.day} {MONTHS_IN[end.month - 1]} {start.year}"
+            f"{start.day} {month_name(start.month, lang)} – "
+            f"{end.day} {month_name(end.month, lang)} {start.year}"
         )
     return report.period
 
 
 def draw_grid(sheet: Sheet, report: ScheduleReport, *, totals: bool) -> None:
     """Days down the side, people across the top — the whole period on one sheet."""
+    lang = report.language
     top = sheet.heading(
         report.name,
-        f"{period_words(report)} · {count_people(len(report.people))}",
-        f"Wygenerowano {date.today():%d.%m.%Y}" if totals else "",
+        f"{period_words(report)} · {translate('count.people', lang, count=len(report.people))}",
+        translate("export.generated_on", lang, date=f"{date.today():%d.%m.%Y}") if totals else "",
     )
 
     columns = max(len(report.people), 1)
@@ -169,23 +129,25 @@ def draw_grid(sheet: Sheet, report: ScheduleReport, *, totals: bool) -> None:
         )
         sheet.text(
             QRectF(date_width * 0.58, y, date_width * 0.4, row_height),
-            WEEKDAY_SHORT[day.day.weekday()],
+            weekday_short(day.day.weekday(), lang),
             sheet.font(date_size * 0.86),
             HOLIDAY_INK if day.holiday else MUTED,
             LEFT,
         )
 
-        if day.closed:
-            # Only a holiday earns a word. A shut Sunday says so with its colour; a
-            # label stretched across the columns pulls the table apart.
-            if day.holiday:
-                sheet.shrunk_text(
-                    QRectF(date_width, y, sheet.width - date_width, row_height),
-                    day.holiday,
-                    sheet.font(min(body_size, 9.4)),
-                    HOLIDAY_INK,
-                )
-        else:
+        if day.closed and day.holiday:
+            # Keep the holiday name inside one ordinary cell. It used to sit on a
+            # patch spanning the table, which erased every column rule underneath it.
+            # A regular cell preserves exactly the same grid on holidays as on every
+            # other day, in both print languages.
+            label_column = (columns - 1) // 2
+            sheet.shrunk_text(
+                QRectF(date_width + label_column * column, y, column, row_height),
+                day.holiday,
+                sheet.font(min(body_size, 9.4)),
+                HOLIDAY_INK,
+            )
+        elif not day.closed:
             for index, person in enumerate(report.people):
                 hours = person.shifts.get(day.day)
                 if hours is None:
@@ -231,6 +193,7 @@ def draw_person(sheet: Sheet, report: ScheduleReport, person: Person) -> None:
     through a month boundary, because the schedule is one stretch of time and splitting
     it into two calendars only makes the reader find their place twice.
     """
+    lang = report.language
     top = sheet.heading(person.name, period_words(report), "")
     days = {info.day: info for info in report.days}
 
@@ -248,7 +211,7 @@ def draw_person(sheet: Sheet, report: ScheduleReport, person: Person) -> None:
     for index in range(7):
         sheet.text(
             QRectF(index * column, y, column, labels),
-            WEEKDAY_SHORT[index].upper(),
+            weekday_short(index, lang).upper(),
             sheet.font(8.8, bold=True),
             MUTED,
         )
@@ -259,11 +222,17 @@ def draw_person(sheet: Sheet, report: ScheduleReport, person: Person) -> None:
         if not report.start_date <= day <= report.end_date:
             continue
         rect = QRectF((slot % 7) * column, y + (slot // 7) * cell_height, column, cell_height)
-        _calendar_cell(sheet, rect, day, person, days.get(day))
+        _calendar_cell(sheet, rect, day, person, days.get(day), lang)
 
     y += weeks * cell_height + 16
     sheet.rule(y, INK, 1.6)
-    sheet.text(QRectF(0, y + 8, sheet.width, 26), "Razem w okresie", sheet.font(10.4), MUTED, LEFT)
+    sheet.text(
+        QRectF(0, y + 8, sheet.width, 26),
+        translate("export.total_for_period", report.language),
+        sheet.font(10.4),
+        MUTED,
+        LEFT,
+    )
     sheet.text(
         QRectF(0, y + 4, sheet.width, 30),
         format_hours(person.minutes),
@@ -273,7 +242,9 @@ def draw_person(sheet: Sheet, report: ScheduleReport, person: Person) -> None:
     )
 
 
-def _calendar_cell(sheet: Sheet, rect: QRectF, day: date, person: Person, info) -> None:  # noqa: ANN001
+def _calendar_cell(  # noqa: ANN001 - info is a DayInfo or nothing
+    sheet: Sheet, rect: QRectF, day: date, person: Person, info, lang: Language
+) -> None:
     hours = person.shifts.get(day)
     holiday = info is not None and info.holiday
     fill = day_fill(info) if info is not None else None
@@ -283,7 +254,7 @@ def _calendar_cell(sheet: Sheet, rect: QRectF, day: date, person: Person, info) 
 
     # The month is named only where it turns over, so a period reaching into September
     # reads as one run of days rather than as two calendars.
-    number = f"{day.day} {MONTHS_SHORT[day.month - 1]}" if day.day == 1 else str(day.day)
+    number = f"{day.day} {month_short(day.month, lang)}" if day.day == 1 else str(day.day)
     sheet.text(
         QRectF(rect.x() + 8, rect.y() + 4, rect.width() - 16, 18),
         number,

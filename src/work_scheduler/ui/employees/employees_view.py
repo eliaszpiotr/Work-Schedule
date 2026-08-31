@@ -22,9 +22,9 @@ from PySide6.QtWidgets import (
 )
 
 from work_scheduler.database.models import Employee
+from work_scheduler.i18n import profession_label, t
 from work_scheduler.services import EmployeeService, ServiceError
 from work_scheduler.ui.components import (
-    PROFESSION_LABELS,
     EmptyState,
     PageHeader,
     confirm_destructive,
@@ -35,7 +35,10 @@ from work_scheduler.ui.employees.employee_delegate import PROFESSION_ROLE, Emplo
 from work_scheduler.ui.employees.employee_dialog import EmployeeDialog
 from work_scheduler.ui.theme import METRICS, Palette
 
-ACTIVE_LABEL = {True: "Aktywny", False: "Nieaktywny"}
+
+def active_label(active: bool) -> str:
+    return t("common.active" if active else "common.inactive")
+
 
 # The first column reads "Imię Nazwisko" but has to sort by surname, so the proxy is
 # given a separate key instead of the text on screen.
@@ -43,7 +46,13 @@ SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 class EmployeeTableModel(QAbstractTableModel):
-    HEADERS = ("Pracownik", "Stanowisko", "Status")
+    @property
+    def HEADERS(self) -> tuple[str, ...]:  # noqa: N802 - kept as the model's own name
+        return (
+            t("employees.column.person"),
+            t("employees.column.profession"),
+            t("employees.column.status"),
+        )
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -79,8 +88,8 @@ class EmployeeTableModel(QAbstractTableModel):
 
         return (
             employee.full_name,
-            PROFESSION_LABELS[employee.profession],
-            ACTIVE_LABEL[employee.active],
+            profession_label(employee.profession),
+            active_label(employee.active),
         )[index.column()]
 
     def headerData(  # noqa: N802 - Qt API
@@ -111,9 +120,9 @@ class EmployeesView(QWidget):
         # Ą, Ć, Ł and the rest belong in their Polish places, not after Z.
         self._proxy.setSortLocaleAware(True)
 
-        self._add = primary_button("Dodaj pracownika", "plus", palette)
+        self._add = primary_button(t("employees.add"), "plus", palette)
         self._search = QLineEdit()
-        self._show_inactive = QCheckBox("Pokaż nieaktywnych")
+        self._show_inactive = QCheckBox(t("employees.show_inactive"))
         self._table = QTableView()
         self._stack = QStackedWidget()
 
@@ -123,7 +132,7 @@ class EmployeesView(QWidget):
     # Construction -----------------------------------------------------------
 
     def _build(self) -> None:
-        header = PageHeader("Pracownicy")
+        header = PageHeader(t("employees.title"))
         self._add.clicked.connect(self.add_employee)
         header.add_action(self._add)
 
@@ -143,9 +152,9 @@ class EmployeesView(QWidget):
         self._stack.addWidget(self._table)
         self._stack.addWidget(
             EmptyState(
-                "Brak pracowników",
-                "Dodaj pierwszą osobę, aby móc układać grafik.",
-                ("Dodaj pracownika", self.add_employee),
+                t("employees.empty.title"),
+                t("employees.empty.body"),
+                (t("employees.add"), self.add_employee),
             )
         )
         # Stretch, with the cap on the stack: without it the stack hands the table its
@@ -157,9 +166,9 @@ class EmployeesView(QWidget):
         layout.addWidget(panel, stretch=1)
 
     def _filter_row(self) -> QHBoxLayout:
-        self._search.setPlaceholderText("Szukaj po nazwisku lub stanowisku…")
+        self._search.setPlaceholderText(t("employees.search.placeholder"))
         self._search.setClearButtonEnabled(True)
-        self._search.setAccessibleName("Szukaj pracownika")
+        self._search.setAccessibleName(t("employees.search.label"))
         self._search.setMaximumWidth(320)
         self._search.textChanged.connect(self._proxy.setFilterFixedString)
 
@@ -281,9 +290,9 @@ class EmployeesView(QWidget):
 
         if confirm_destructive(
             self,
-            "Usunąć pracownika?",
-            f"{employee.full_name} zniknie z kartoteki na dobre. Tego nie da się cofnąć.",
-            "Usuń pracownika",
+            t("employees.delete.title"),
+            t("employees.delete.body", name=employee.full_name),
+            t("employees.delete.action"),
             palette=self._palette,
         ):
             self._run(lambda: self._service.delete(employee.id))
@@ -293,7 +302,7 @@ class EmployeesView(QWidget):
         try:
             operation()
         except ServiceError as error:
-            QMessageBox.warning(self, "Nie udało się", str(error))
+            QMessageBox.warning(self, t("common.failed"), str(error))
             return
         self.reload()
 
@@ -310,11 +319,11 @@ class EmployeesView(QWidget):
             return
 
         menu = QMenu(self)
-        menu.addAction("Edytuj", self.edit_selected)
+        menu.addAction(t("common.edit"), self.edit_selected)
         menu.addAction(
-            "Oznacz jako nieaktywnego" if employee.active else "Oznacz jako aktywnego",
+            t("employees.mark_inactive") if employee.active else t("employees.mark_active"),
             self.toggle_selected,
         )
         menu.addSeparator()
-        menu.addAction("Usuń", self.delete_selected)
+        menu.addAction(t("common.delete"), self.delete_selected)
         menu.exec(self._table.viewport().mapToGlobal(position))

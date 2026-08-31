@@ -1,26 +1,30 @@
 from datetime import date, timedelta
 
+from work_scheduler.i18n import Language, translate
+
 # Christmas Eve became a public holiday in Poland only from 2025 onwards.
 CHRISTMAS_EVE_FROM = 2025
 
+# Catalogue keys rather than words: the printed sheet may be in a different language
+# than the interface that produced it.
 FIXED = {
-    (1, 1): "Nowy Rok",
-    (1, 6): "Trzech Króli",
-    (5, 1): "Święto Pracy",
-    (5, 3): "Święto Konstytucji 3 Maja",
-    (8, 15): "Wniebowzięcie NMP",
-    (11, 1): "Wszystkich Świętych",
-    (11, 11): "Święto Niepodległości",
-    (12, 25): "Boże Narodzenie",
-    (12, 26): "drugi dzień Bożego Narodzenia",
+    (1, 1): "holiday.new_year",
+    (1, 6): "holiday.epiphany",
+    (5, 1): "holiday.labour_day",
+    (5, 3): "holiday.constitution_day",
+    (8, 15): "holiday.assumption",
+    (11, 1): "holiday.all_saints",
+    (11, 11): "holiday.independence",
+    (12, 25): "holiday.christmas",
+    (12, 26): "holiday.christmas_second",
 }
 
 # Days after Easter Sunday.
 MOVABLE = {
-    0: "Wielkanoc",
-    1: "Poniedziałek Wielkanocny",
-    49: "Zielone Świątki",
-    60: "Boże Ciało",
+    0: "holiday.easter",
+    1: "holiday.easter_monday",
+    49: "holiday.pentecost",
+    60: "holiday.corpus_christi",
 }
 
 
@@ -43,25 +47,33 @@ def easter(year: int) -> date:
     return date(year, month, day + 1)
 
 
-def holidays_in(year: int) -> dict[date, str]:
-    """Every Polish public holiday of one year, by date."""
-    days = {date(year, month, day): name for (month, day), name in FIXED.items()}
+def holiday_keys_in(year: int) -> dict[date, str]:
+    """Every Polish public holiday of one year, by date, as catalogue keys."""
+    days = {date(year, month, day): key for (month, day), key in FIXED.items()}
     if year >= CHRISTMAS_EVE_FROM:
-        days[date(year, 12, 24)] = "Wigilia"
+        days[date(year, 12, 24)] = "holiday.christmas_eve"
 
     sunday = easter(year)
-    for offset, name in MOVABLE.items():
-        days[sunday + timedelta(days=offset)] = name
+    for offset, key in MOVABLE.items():
+        days[sunday + timedelta(days=offset)] = key
     return days
 
 
-def holiday_name(day: date) -> str | None:
-    return holidays_in(day.year).get(day)
+def holidays_in(year: int, language: Language | None = None) -> dict[date, str]:
+    """The same, named."""
+    return {day: translate(key, language) for day, key in holiday_keys_in(year).items()}
 
 
-def holidays_within(start: date, end: date) -> dict[date, str]:
+def holiday_name(day: date, language: Language | None = None) -> str | None:
+    key = holiday_keys_in(day.year).get(day)
+    return None if key is None else translate(key, language)
+
+
+def holidays_within(start: date, end: date, language: Language | None = None) -> dict[date, str]:
     """A period can span a new year, so both years have to be looked at."""
     days: dict[date, str] = {}
     for year in range(start.year, end.year + 1):
-        days.update({day: name for day, name in holidays_in(year).items() if start <= day <= end})
+        days.update(
+            {day: name for day, name in holidays_in(year, language).items() if start <= day <= end}
+        )
     return days

@@ -2,6 +2,7 @@ from PySide6.QtCore import QModelIndex, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
+from work_scheduler.i18n import t
 from work_scheduler.ui.components import initials, trade_colours
 from work_scheduler.ui.theme import METRICS, Palette
 
@@ -60,7 +61,7 @@ class EmployeeDelegate(QStyledItemDelegate):
 
     @staticmethod
     def _is_active(index: QModelIndex) -> bool:
-        return index.sibling(index.row(), STATUS_COLUMN).data() == "Aktywny"
+        return index.sibling(index.row(), STATUS_COLUMN).data() == t("common.active")
 
     # Pieces -----------------------------------------------------------------
 

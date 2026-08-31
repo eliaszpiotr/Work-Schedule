@@ -10,8 +10,8 @@ from PySide6.QtWidgets import (
 )
 
 from work_scheduler.database.models import Employee, Profession
+from work_scheduler.i18n import profession_label, t
 from work_scheduler.ui.components import (
-    PROFESSION_LABELS,
     PlainLabel,
     primary_button,
     secondary_button,
@@ -24,16 +24,17 @@ class EmployeeDialog(QDialog):
         super().__init__(parent)
         self._employee = employee
 
-        self.setWindowTitle("Edytuj pracownika" if employee else "Nowy pracownik")
+        self.setWindowTitle(t("employee.dialog.edit") if employee else t("employee.dialog.new"))
         self.setModal(True)
         self.setFixedWidth(METRICS.dialog_width)
 
         self._first_name = QLineEdit()
         self._last_name = QLineEdit()
         self._profession = QComboBox()
-        self._active = QCheckBox("Aktywny")
+        self._active = QCheckBox(t("employee.field.active"))
 
-        for profession, label in PROFESSION_LABELS.items():
+        for profession in Profession:
+            label = profession_label(profession)
             self._profession.addItem(label, profession)
 
         self._build()
@@ -45,19 +46,19 @@ class EmployeeDialog(QDialog):
         layout.setSpacing(METRICS.space_4)
 
         for label, field in (
-            ("Imię", self._first_name),
-            ("Nazwisko", self._last_name),
-            ("Stanowisko", self._profession),
+            (t("employee.field.first_name"), self._first_name),
+            (t("employee.field.last_name"), self._last_name),
+            (t("employee.field.profession"), self._profession),
         ):
             layout.addLayout(self._field(label, field))
 
-        self._active.setToolTip("Nieaktywni nie pojawiają się przy tworzeniu nowego grafiku")
+        self._active.setAccessibleDescription(t("employee.active_hint"))
         layout.addWidget(self._active)
         layout.addStretch()
 
-        cancel = secondary_button("Anuluj")
+        cancel = secondary_button(t("common.cancel"))
         cancel.clicked.connect(self.reject)
-        save = primary_button("Zapisz")
+        save = primary_button(t("common.save"))
         save.setDefault(True)
         save.clicked.connect(self.accept)
 

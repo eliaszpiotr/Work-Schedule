@@ -16,11 +16,11 @@ from PySide6.QtWidgets import (
 )
 
 from work_scheduler.database.models import Employee
+from work_scheduler.i18n import Language, current_language, profession_name, t, translate
 from work_scheduler.services import DayHours
 from work_scheduler.services.holidays import holidays_in, holidays_within
 from work_scheduler.services.schedule_service import MAX_PERIOD_DAYS
 from work_scheduler.ui.components import (
-    PROFESSION_LABELS,
     PlainLabel,
     primary_button,
     restyle,
@@ -33,25 +33,7 @@ from work_scheduler.ui.schedules.people_picker import (
     PersonDelegate,
 )
 from work_scheduler.ui.settings.opening_hours_editor import OpeningHoursEditor
-from work_scheduler.ui.text import days as count_days
-from work_scheduler.ui.text import people as count_people
-from work_scheduler.ui.text import plural, word
 from work_scheduler.ui.theme import LIGHT, METRICS, Palette
-
-MONTHS = (
-    "Styczeń",
-    "Luty",
-    "Marzec",
-    "Kwiecień",
-    "Maj",
-    "Czerwiec",
-    "Lipiec",
-    "Sierpień",
-    "Wrzesień",
-    "Październik",
-    "Listopad",
-    "Grudzień",
-)
 
 
 def suggested_name(start: date, end: date | None = None) -> str:
@@ -61,7 +43,7 @@ def suggested_name(start: date, end: date | None = None) -> str:
     "Sierpień" on a schedule that runs into September would be a small lie.
     """
     if end is None or (start.year, start.month) == (end.year, end.month):
-        return f"{MONTHS[start.month - 1]} {start.year}"
+        return f"{translate(f'month.name.{start.month}')} {start.year}"
     if start.year == end.year:
         return f"{start:%d.%m} – {end:%d.%m.%Y}"
     return f"{start:%d.%m.%Y} – {end:%d.%m.%Y}"
@@ -84,10 +66,10 @@ def _to_qdate(value: date) -> QDate:
     return QDate(value.year, value.month, value.day)
 
 
-def _polish_calendar(field: QDateEdit, palette: Palette) -> None:
-    """Month names in Polish, weeks from Monday, no week numbers, holidays in blue."""
+def _localised_calendar(field: QDateEdit, palette: Palette) -> None:
+    """Month names in the interface language, weeks from Monday, holidays in blue."""
     calendar = field.calendarWidget()
-    calendar.setLocale(QLocale(QLocale.Language.Polish, QLocale.Country.Poland))
+    calendar.setLocale(_calendar_locale())
     calendar.setFirstDayOfWeek(Qt.DayOfWeek.Monday)
     calendar.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
     calendar.setGridVisible(False)
@@ -97,8 +79,7 @@ def _polish_calendar(field: QDateEdit, palette: Palette) -> None:
     today = date.today()
     # Enough years around today that scrolling the popup keeps showing them.
     for year in range(today.year - 1, today.year + 3):
-        for day, name in holidays_in(year).items():
-            marked.setToolTip(name)
+        for day in holidays_in(year):
             calendar.setDateTextFormat(_to_qdate(day), marked)
 
 
@@ -117,7 +98,7 @@ class ScheduleDialog(QDialog):
         today = today or date.today()
         self._palette = palette
 
-        self.setWindowTitle("Nowy grafik")
+        self.setWindowTitle(t("wizard.title"))
         self.setModal(True)
         self.setMinimumWidth(METRICS.dialog_width)
 
@@ -130,10 +111,10 @@ class ScheduleDialog(QDialog):
         self._people = QListWidget()
         self._hours = OpeningHoursEditor(week)
         self._hours_summary = PlainLabel()
-        self._customise = secondary_button("Dostosuj…")
+        self._customise = secondary_button(t("wizard.customise"))
         self._folded_height = 0
         self._summary = PlainLabel()
-        self._save = primary_button("Utwórz grafik")
+        self._save = primary_button(t("wizard.create"))
 
         self._fill_people(employees)
         self._build()
@@ -146,12 +127,15 @@ class ScheduleDialog(QDialog):
         layout.setContentsMargins(*(METRICS.space_6,) * 4)
         layout.setSpacing(METRICS.space_4)
 
-        layout.addLayout(self._field("Nazwa", self._name))
+        layout.addLayout(self._field(t("wizard.name"), self._name))
         layout.addLayout(self._period_row())
-        layout.addLayout(self._field("Kto pracuje w tym okresie", self._people))
+        layout.addLayout(self._field(t("wizard.who_works"), self._people))
         layout.addLayout(self._hours_row())
 
         self._summary.setObjectName("mutedText")
+        # Two sentences in Polish, and longer still in English. Without wrapping the
+        # tail of the line simply leaves the window.
+        self._summary.setWordWrap(True)
         layout.addWidget(self._summary)
         layout.addLayout(self._buttons())
 
@@ -162,14 +146,14 @@ class ScheduleDialog(QDialog):
             field.setCalendarPopup(True)
             field.dateChanged.connect(self._rename_for_period)
             field.dateChanged.connect(self._refresh)
-            _polish_calendar(field, self._palette)
+            _localised_calendar(field, self._palette)
         self._people.itemChanged.connect(self._refresh)
 
     def _period_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setSpacing(METRICS.space_3)
-        row.addLayout(self._field("Od", self._start))
-        row.addLayout(self._field("Do", self._end))
+        row.addLayout(self._field(t("wizard.from"), self._start))
+        row.addLayout(self._field(t("wizard.to"), self._end))
         row.addStretch()
         return row
 
@@ -185,13 +169,13 @@ class ScheduleDialog(QDialog):
         head.addStretch()
         head.addWidget(self._customise)
 
-        column = self._field("Godziny otwarcia", None)
+        column = self._field(t("wizard.opening_hours"), None)
         column.addLayout(head)
         column.addWidget(self._hours)
         return column
 
     def _buttons(self) -> QHBoxLayout:
-        cancel = secondary_button("Anuluj")
+        cancel = secondary_button(t("common.cancel"))
         cancel.clicked.connect(self.reject)
         self._save.setDefault(True)
         self._save.clicked.connect(self.accept)
@@ -219,7 +203,9 @@ class ScheduleDialog(QDialog):
         return column
 
     def _fill_people(self, employees: list[Employee]) -> None:
-        self._people.setMaximumHeight(METRICS.people_list_height)
+        # Exactly five full rows. A flexible height used to leave half a person cut
+        # off at the lower border when the dialog was laid out on macOS.
+        self._people.setFixedHeight(METRICS.people_list_height)
         self._people.setProperty("role", "picker")
         self._people.setItemDelegate(PersonDelegate(self._palette, self._people))
         self._people.setSpacing(0)
@@ -234,7 +220,7 @@ class ScheduleDialog(QDialog):
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, employee.id)
             item.setData(NAME_ROLE, name)
-            item.setData(TRADE_ROLE, PROFESSION_LABELS[employee.profession].lower())
+            item.setData(TRADE_ROLE, profession_name(employee.profession))
             item.setData(PROFESSION_ROLE, employee.profession)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Unchecked)
@@ -256,7 +242,7 @@ class ScheduleDialog(QDialog):
         if shown:
             self._folded_height = self.height()
 
-        self._customise.setText("Zwiń" if shown else "Dostosuj…")
+        self._customise.setText(t("common.collapse") if shown else t("wizard.customise"))
         self._hours.setVisible(shown)
         self.layout().activate()
 
@@ -309,25 +295,42 @@ class ScheduleDialog(QDialog):
         people = len(self.employee_ids)
 
         if days < 1:
-            message, tone, allowed = "Data końca jest wcześniejsza niż początku.", "danger", False
+            message, tone, allowed = t("wizard.end_before_start"), "danger", False
         elif days > MAX_PERIOD_DAYS:
-            message = f"Okres nie może być dłuższy niż {MAX_PERIOD_DAYS} dni."
+            message = t("wizard.period_too_long", max=MAX_PERIOD_DAYS)
             tone, allowed = "danger", False
         elif people == 0:
-            message, tone, allowed = "Zaznacz co najmniej jedną osobę.", "", False
+            message, tone, allowed = t("schedule.error.no_people"), "", False
         else:
-            message = f"{count_days(days)} × {count_people(people)} — tyle będzie miała siatka."
+            message = t(
+                "wizard.grid_size",
+                days=t("count.days", count=days),
+                people=t("count.people", count=people),
+            )
             holidays = len(holidays_within(self.start_date, self.end_date))
             if holidays:
-                verb = word(holidays, "wypada", "wypadają", "wypada")
                 message += (
-                    f" W okresie {verb} {plural(holidays, 'święto', 'święta', 'świąt')}"
-                    " — te dni będą zamknięte, dopóki ich nie otworzysz."
+                    " "
+                    + t("schedule.wizard.holidays_in_period", count=holidays)
+                    + t("wizard.holidays_suffix")
                 )
             tone, allowed = "", True
 
         self._summary.setText(message)
+        # QLabel reports the wrapped height correctly, but a visible QDialog does not
+        # necessarily grow when the text changes after somebody ticks a person. Reserve
+        # the height needed at the dialog's narrowest supported width so neither the
+        # Polish nor the longer English summary is clipped behind the button row.
+        summary_width = METRICS.dialog_width - 2 * METRICS.space_6
+        self._summary.setMinimumHeight(self._summary.heightForWidth(summary_width))
         self._summary.setObjectName("" if tone else "mutedText")
         self._summary.setProperty("tone", tone)
         restyle(self._summary)
         self._save.setEnabled(allowed and bool(self.name.strip()))
+
+
+def _calendar_locale() -> QLocale:
+    """The calendar popup takes its month and day names from Qt, not from us."""
+    if current_language() is Language.EN:
+        return QLocale(QLocale.Language.English, QLocale.Country.UnitedKingdom)
+    return QLocale(QLocale.Language.Polish, QLocale.Country.Poland)

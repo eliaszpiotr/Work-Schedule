@@ -3,6 +3,7 @@ from datetime import date, time
 from typing import TYPE_CHECKING
 
 from work_scheduler.database.models import Profession
+from work_scheduler.i18n import t
 from work_scheduler.services.time_text import format_range, format_range_short
 
 if TYPE_CHECKING:
@@ -55,14 +56,14 @@ class Uncovered:
     def hours(self) -> str:
         """The missing stretches, short enough to sit next to the date in a row header."""
         if self.whole_day:
-            return "cały dzień"
+            return t("coverage.all_day")
         return ", ".join(format_range_short(a, b) for a, b in self.intervals)
 
     @property
     def full_hours(self) -> str:
         """The same, spelled out, for a tooltip that has room."""
         if self.whole_day:
-            return "cały dzień"
+            return t("coverage.all_day")
         return ", ".join(format_range(a, b) for a, b in self.intervals)
 
     def describe(self) -> str:

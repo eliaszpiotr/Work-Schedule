@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from work_scheduler.database.models import ScheduleStatus
+from work_scheduler.i18n import t
 from work_scheduler.services import (
     EmployeeService,
     OpeningHoursService,
@@ -38,14 +39,18 @@ from work_scheduler.ui.theme import METRICS, Palette
 # and singular on a card: the filter names a set, the badge names one schedule.
 # Archived is missing on purpose: nothing in the application ever sets that status,
 # so the filter could only ever come back empty.
-FILTER_LABELS = {
-    ScheduleStatus.DRAFT: "Robocze",
-    ScheduleStatus.FINAL: "Gotowe",
+FILTER_KEYS = {
+    ScheduleStatus.DRAFT: "schedules.filter.draft",
+    ScheduleStatus.FINAL: "schedules.filter.final",
 }
-STATUS_FILTERS = (
-    ("Wszystkie", None),
-    *((label, status) for status, label in FILTER_LABELS.items()),
-)
+
+
+def status_filters() -> tuple[tuple[str, ScheduleStatus | None], ...]:
+    """Built on each call, so a language switch relabels the segments."""
+    return (
+        (t("schedules.filter.all"), None),
+        *((t(key), status) for status, key in FILTER_KEYS.items()),
+    )
 
 
 class SchedulesView(QWidget):
@@ -69,11 +74,11 @@ class SchedulesView(QWidget):
         self._shifts = shifts
         self._palette = palette
 
-        self._filter = SegmentedControl(list(STATUS_FILTERS))
+        self._filter = SegmentedControl(list(status_filters()))
         self._cards = CardList()
         self._picked: int | None = None
         self._stack = QStackedWidget()
-        self._add = primary_button("Nowy grafik", "plus", palette)
+        self._add = primary_button(t("schedules.new"), "plus", palette)
 
         self._build()
         self.reload()
@@ -81,7 +86,7 @@ class SchedulesView(QWidget):
     # Construction -----------------------------------------------------------
 
     def _build(self) -> None:
-        header = PageHeader("Grafiki")
+        header = PageHeader(t("schedules.title"))
         self._add.clicked.connect(self.new_schedule)
         header.add_action(self._add)
 
@@ -103,16 +108,16 @@ class SchedulesView(QWidget):
         self._stack.addWidget(self._scroller())
         self._stack.addWidget(
             EmptyState(
-                "Brak grafików",
-                "Utwórz pierwszy grafik, żeby zacząć układać godziny.",
-                ("Nowy grafik", self.new_schedule),
+                t("schedules.empty.title"),
+                t("schedules.empty.body"),
+                (t("schedules.new"), self.new_schedule),
             )
         )
         body.addWidget(self._stack, stretch=1)
         layout.addWidget(panel, stretch=1)
 
     def _filter_row(self) -> QHBoxLayout:
-        self._filter.setAccessibleName("Filtr statusu")
+        self._filter.setAccessibleName(t("schedules.filter.label"))
         self._filter.changed.connect(lambda _: self.reload())
 
         row = QHBoxLayout()
@@ -185,8 +190,8 @@ class SchedulesView(QWidget):
         if not people:
             QMessageBox.information(
                 self,
-                "Najpierw pracownicy",
-                "Dodaj pracowników na ekranie „Pracownicy”, zanim utworzysz grafik.",
+                t("schedules.need_people.title"),
+                t("schedules.need_people.body"),
             )
             return
 
@@ -203,7 +208,7 @@ class SchedulesView(QWidget):
                 dialog.week,
             )
         except ServiceError as error:
-            QMessageBox.warning(self, "Nie udało się", str(error))
+            QMessageBox.warning(self, t("common.failed"), str(error))
             return
 
         self.reload()
@@ -222,10 +227,9 @@ class SchedulesView(QWidget):
         if confirmed is None:
             confirmed = confirm_destructive(
                 self,
-                "Usunąć grafik?",
-                f"„{schedule.name}” zniknie razem ze wszystkimi wpisanymi godzinami. "
-                "Tego nie da się cofnąć.",
-                "Usuń grafik",
+                t("schedules.delete.title"),
+                t("schedules.delete.body", name=schedule.name),
+                t("schedules.delete.action"),
                 palette=self._palette,
             )
         if not confirmed:
@@ -234,7 +238,7 @@ class SchedulesView(QWidget):
         try:
             self._schedules.delete(schedule.id)
         except ServiceError as error:
-            QMessageBox.warning(self, "Nie udało się", str(error))
+            QMessageBox.warning(self, t("common.failed"), str(error))
             return
         self.reload()
 
@@ -243,11 +247,11 @@ class SchedulesView(QWidget):
             return
 
         menu = QMenu(self)
-        self._entry(menu, "square-pen", "Otwórz", self.open_selected)
+        self._entry(menu, "square-pen", t("common.open"), self.open_selected)
         menu.addSeparator()
         self._add_export_actions(menu)
         menu.addSeparator()
-        self._entry(menu, "trash-2", "Usuń", self.delete_selected)
+        self._entry(menu, "trash-2", t("common.delete"), self.delete_selected)
         menu.exec(position)
 
     def _entry(self, menu: QMenu, icon: str, label: str, action) -> QAction:  # noqa: ANN001
@@ -260,15 +264,13 @@ class SchedulesView(QWidget):
         schedule = self.selected_schedule()
         ready = schedule is not None and schedule.status is not ScheduleStatus.DRAFT
 
-        save = self._entry(menu, "file-down", "Zapisz PDF…", self.save_selected_pdf)
-        printout = self._entry(menu, "printer", "Drukuj…", self.print_selected)
+        save = self._entry(menu, "file-down", t("schedules.save_pdf"), self.save_selected_pdf)
+        printout = self._entry(menu, "printer", t("schedules.print"), self.print_selected)
         for action in (save, printout):
             action.setEnabled(ready)
-            if not ready:
-                action.setToolTip("Najpierw zakończ grafik")
 
         if ready:
-            self._entry(menu, "chevron-left", "Wróć do roboczego", self.reopen_selected)
+            self._entry(menu, "chevron-left", t("schedules.reopen"), self.reopen_selected)
 
     def save_selected_pdf(self) -> None:
         schedule = self.selected_schedule()
@@ -287,6 +289,6 @@ class SchedulesView(QWidget):
         try:
             self._schedules.reopen(schedule.id)
         except ServiceError as error:
-            QMessageBox.warning(self, "Nie udało się", str(error))
+            QMessageBox.warning(self, t("common.failed"), str(error))
             return
         self.reload()

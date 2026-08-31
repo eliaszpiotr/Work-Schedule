@@ -14,15 +14,16 @@ from PySide6.QtWidgets import (
 )
 
 from work_scheduler.database.models import Profession
+from work_scheduler.i18n import profession_label, t
 from work_scheduler.ui.icons import load_icon
 from work_scheduler.ui.theme import METRICS, Palette
 
 BUTTON_ICON_SIZE = 16
 
-PROFESSION_LABELS: dict[Profession, str] = {
-    Profession.PHARMACIST: "Magister",
-    Profession.TECHNICIAN: "Technik",
-}
+
+def profession_labels() -> dict[Profession, str]:
+    """Looked up on each call, so a language switch reaches every screen using it."""
+    return {profession: profession_label(profession) for profession in Profession}
 
 
 def trade_colours(profession: Profession | str | None, palette: Palette) -> tuple[str, str]:
@@ -151,7 +152,7 @@ class ConfirmDialog(QDialog):
         top.addLayout(words, stretch=1)
 
         self._confirm = _with_variant(QPushButton(action), "dangerFilled")
-        self._cancel = secondary_button("Anuluj")
+        self._cancel = secondary_button(t("common.cancel"))
         self._confirm.clicked.connect(self.accept)
         self._cancel.clicked.connect(self.reject)
         # Enter must not delete anything: the safe answer keeps the focus.
@@ -193,14 +194,13 @@ def confirm_destructive(
     return dialog.exec() == QDialog.DialogCode.Accepted
 
 
-def icon_button(name: str, tooltip: str, palette: Palette) -> QToolButton:
+def icon_button(name: str, accessible_name: str, palette: Palette) -> QToolButton:
     button = QToolButton()
     button.setIcon(load_icon(name, palette.text_secondary))
     button.setIconSize(QSize(18, 18))
     button.setFixedSize(METRICS.icon_button, METRICS.icon_button)
-    button.setToolTip(tooltip)
     # Icon-only controls need a name for screen readers.
-    button.setAccessibleName(tooltip)
+    button.setAccessibleName(accessible_name)
     button.setCursor(Qt.CursorShape.PointingHandCursor)
     return button
 

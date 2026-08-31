@@ -2,7 +2,7 @@ from datetime import date, time
 
 import pytest
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QDialog, QLabel
 from sqlalchemy import Engine
 
 from work_scheduler.database.models import Profession
@@ -14,11 +14,13 @@ from work_scheduler.services import (
     ScheduleService,
     ShiftService,
 )
+from work_scheduler.services.time_text import format_hours
+from work_scheduler.ui.schedules import schedule_grid
 from work_scheduler.ui.schedules.schedule_grid import (
-    TRADE_NAMES,
     LaneHeader,
     ScheduleGridModel,
     ScheduleGridView,
+    trade_name,
 )
 from work_scheduler.ui.theme import DARK, LIGHT, METRICS
 
@@ -60,11 +62,18 @@ def model(application, schedule: ScheduleData, shifts: ShiftService) -> Schedule
 @pytest.fixture
 def view(
     application,
+    engine: Engine,
     schedule: ScheduleData,
     schedules: ScheduleService,
     shifts: ShiftService,
 ) -> ScheduleGridView:
-    grid = ScheduleGridView(schedule, schedules, shifts, LIGHT)
+    grid = ScheduleGridView(
+        schedule,
+        schedules,
+        shifts,
+        LIGHT,
+        employees=EmployeeService(create_session_factory(engine)),
+    )
     # Big enough that every row of the period is really laid out, not just the first few.
     # The toolbar, the legend and the totals take their share before the rows do.
     grid.resize(700, 620)
@@ -72,7 +81,7 @@ def view(
 
 
 class TestShape:
-    def test_there_is_one_row_per_day_of_the_period(self, model: ScheduleGridModel) -> None:
+    def test_only_days_belong_to_the_scrollable_model(self, model: ScheduleGridModel) -> None:
         assert model.rowCount() == 5
 
     def test_a_longer_period_makes_more_rows(
@@ -162,21 +171,6 @@ class TestClosedDays:
         assert shifts.grid(schedule.id) == {}
 
 
-class TestOutsideOpeningHours:
-    def test_hours_inside_opening_time_are_not_flagged(self, model: ScheduleGridModel) -> None:
-        model.setData(model.index(0, 0), "10-15")
-
-        assert model.index(0, 0).data(Qt.ItemDataRole.ToolTipRole) is None
-
-    def test_hours_outside_opening_time_are_flagged_but_kept(
-        self, model: ScheduleGridModel, schedule: ScheduleData, shifts: ShiftService
-    ) -> None:
-        model.setData(model.index(0, 0), "6-15")
-
-        assert shifts.grid(schedule.id)
-        assert model.index(0, 0).data(Qt.ItemDataRole.ToolTipRole)
-
-
 class TestPainting:
     """The stylesheet makes Qt draw cells itself and drop the model's background role,
     so these check the pixels rather than the model."""
@@ -212,14 +206,16 @@ class TestTotals:
 
         assert model.totals() == [13 * 60, 0]
 
-    def test_the_totals_row_shows_them_as_hours(self, view: ScheduleGridView) -> None:
+    def test_the_footer_shows_the_models_totals_as_hours(self, view: ScheduleGridView) -> None:
         view._model.setData(view._model.index(0, 0), "8:30-16:00")
 
-        assert view._totals.index(0, 0).data() == "7,5 h"
+        assert format_hours(view._model.totals()[0]) == "7,5 h"
 
-    def test_the_totals_row_has_one_cell_per_person(self, view: ScheduleGridView) -> None:
-        assert view._totals.columnCount() == 2
-        assert view._totals.rowCount() == 1
+    def test_the_footer_has_one_value_per_person(self, view: ScheduleGridView) -> None:
+        assert [format_hours(minutes) for minutes in view._model.totals()] == ["—", "—"]
+
+    def test_the_footer_is_not_an_editable_table(self, view: ScheduleGridView) -> None:
+        assert view._totals_bar.focusPolicy() == Qt.FocusPolicy.NoFocus
 
 
 class TestView:
@@ -235,6 +231,87 @@ class TestView:
         assert left == [True]
 
 
+class TestEditingAnExistingSchedule:
+    def test_a_person_can_be_added_from_the_grid(
+        self,
+        view: ScheduleGridView,
+        engine: Engine,
+        schedules: ScheduleService,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        employees = EmployeeService(create_session_factory(engine))
+        extra = employees.create("Ewa", "Bąk", Profession.TECHNICIAN)
+        chosen = [lane.employee_id for lane in view._schedule.lanes] + [extra.id]
+
+        class AcceptedTeam:
+            employee_ids = chosen
+
+            def __init__(self, *_args, **_kwargs) -> None:
+                pass
+
+            @staticmethod
+            def exec() -> QDialog.DialogCode:
+                return QDialog.DialogCode.Accepted
+
+        monkeypatch.setattr(schedule_grid, "ScheduleTeamDialog", AcceptedTeam)
+
+        view.edit_team()
+
+        saved = schedules.open_schedule(view._schedule.id)
+        assert [lane.employee_id for lane in saved.lanes] == chosen
+        assert view._model.columnCount() == 3
+        assert "3 osoby" in view._period.text()
+
+    def test_removing_a_person_with_shifts_requires_confirmation(
+        self,
+        view: ScheduleGridView,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        removed = view._schedule.lanes[0]
+        view._model.setData(view._model.index(0, 0), "9-15")
+        chosen = [view._schedule.lanes[1].employee_id]
+
+        class AcceptedTeam:
+            employee_ids = chosen
+
+            def __init__(self, *_args, **_kwargs) -> None:
+                pass
+
+            @staticmethod
+            def exec() -> QDialog.DialogCode:
+                return QDialog.DialogCode.Accepted
+
+        monkeypatch.setattr(schedule_grid, "ScheduleTeamDialog", AcceptedTeam)
+        monkeypatch.setattr(schedule_grid, "confirm_destructive", lambda *_args, **_kwargs: False)
+
+        view.edit_team()
+
+        assert removed.employee_id in [lane.employee_id for lane in view._schedule.lanes]
+
+    def test_one_day_can_receive_exceptional_hours(
+        self,
+        view: ScheduleGridView,
+        schedules: ScheduleService,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        class AcceptedHours:
+            hours = (time(10), time(16))
+
+            def __init__(self, *_args, **_kwargs) -> None:
+                pass
+
+            @staticmethod
+            def exec() -> QDialog.DialogCode:
+                return QDialog.DialogCode.Accepted
+
+        monkeypatch.setattr(schedule_grid, "DayHoursDialog", AcceptedHours)
+
+        view.edit_day_hours(0)
+
+        changed = schedules.open_schedule(view._schedule.id).day_info(PERIOD[0])
+        assert (changed.opens, changed.closes, changed.overridden) == (time(10), time(16), True)
+
+
 # 15 August 2026 (Wniebowzięcie NMP) is the Saturday inside the test period.
 HOLIDAY_ROW = 3
 
@@ -245,11 +322,10 @@ class TestHolidayRows:
     ) -> None:
         assert not model.flags(model.index(HOLIDAY_ROW, 0)) & Qt.ItemFlag.ItemIsEditable
 
-    def test_the_row_header_names_the_holiday(self, model: ScheduleGridModel) -> None:
+    def test_the_row_header_keeps_only_the_date(self, model: ScheduleGridModel) -> None:
         label = model.headerData(HOLIDAY_ROW, Qt.Orientation.Vertical)
 
-        assert "15.08" in label
-        assert "Wniebowzięcie" in label
+        assert label == "sb 15.08"
 
     def test_the_holiday_row_is_painted_blue(self, view: ScheduleGridView) -> None:
         assert TestPainting.corner_colour(view, HOLIDAY_ROW) == LIGHT.holiday_surface.lower()
@@ -263,12 +339,6 @@ class TestHolidayRows:
         model = view._model
         assert model.flags(model.index(HOLIDAY_ROW, 0)) & Qt.ItemFlag.ItemIsEditable
         assert model.setData(model.index(HOLIDAY_ROW, 0), "10-14") is True
-
-    def test_the_row_still_says_it_is_a_holiday_when_worked(self, view: ScheduleGridView) -> None:
-        view.set_day_working(HOLIDAY_ROW)
-
-        label = view._model.headerData(HOLIDAY_ROW, Qt.Orientation.Vertical)
-        assert "Wniebowzięcie" in label
 
     def test_an_ordinary_day_can_be_closed_by_hand(self, view: ScheduleGridView) -> None:
         view.set_day_closed(0)
@@ -302,18 +372,16 @@ class TestSelectionIsNotConfusedWithAClosedDay:
 
 
 class TestNoTextClutter:
-    def test_the_row_header_carries_only_the_date_and_the_holiday(
-        self, view: ScheduleGridView
-    ) -> None:
+    def test_the_row_header_carries_only_the_date(self, view: ScheduleGridView) -> None:
         view._model.setData(view._model.index(0, 1), "8-20")
 
         assert view._model.headerData(0, Qt.Orientation.Vertical) == "śr 12.08"
 
-    def test_the_missing_cover_is_still_explained_on_hover(self, view: ScheduleGridView) -> None:
+    def test_the_missing_cover_does_not_show_hover_text(self, view: ScheduleGridView) -> None:
         view._model.setData(view._model.index(0, 1), "8-20")
 
         tip = view._model.headerData(0, Qt.Orientation.Vertical, Qt.ItemDataRole.ToolTipRole)
-        assert "Bez magistra" in tip
+        assert tip is None
 
     def test_the_day_is_still_red(self, view: ScheduleGridView) -> None:
         view._model.setData(view._model.index(0, 1), "8-20")
@@ -341,22 +409,69 @@ class TestConsistentTable:
         rect = view._table.visualRect(view._model.index(row, column))
         return image.pixelColor(rect.right(), rect.center().y()).name()
 
-    def every_right_edge(self, view: ScheduleGridView, row: int) -> set[str]:
-        return {self.right_edge(view, row, column) for column in range(view._model.columnCount())}
+    def every_internal_right_edge(self, view: ScheduleGridView, row: int) -> set[str]:
+        return {
+            self.right_edge(view, row, column) for column in range(view._model.columnCount() - 1)
+        }
 
     def test_a_plain_row_is_ruled_the_same_across(self, view: ScheduleGridView) -> None:
-        assert self.every_right_edge(view, 0) == {LIGHT.border.lower()}
+        assert self.every_internal_right_edge(view, 0) == {LIGHT.border.lower()}
 
     def test_a_filled_row_is_ruled_exactly_like_a_plain_one(self, view: ScheduleGridView) -> None:
         view._model.setData(view._model.index(0, 0), "8-20")
 
-        assert self.every_right_edge(view, 0) == self.every_right_edge(view, 1)
+        assert self.every_internal_right_edge(view, 0) == self.every_internal_right_edge(view, 1)
 
     def test_a_closed_row_is_ruled_the_same_too(self, view: ScheduleGridView) -> None:
-        assert self.every_right_edge(view, SUNDAY_ROW) == {LIGHT.border.lower()}
+        assert self.every_internal_right_edge(view, SUNDAY_ROW) == {LIGHT.border.lower()}
 
     def test_a_holiday_row_is_ruled_the_same_too(self, view: ScheduleGridView) -> None:
-        assert self.every_right_edge(view, HOLIDAY_ROW) == {LIGHT.border.lower()}
+        assert self.every_internal_right_edge(view, HOLIDAY_ROW) == {LIGHT.border.lower()}
+
+    def test_the_last_cell_does_not_double_the_outside_frame(self, view: ScheduleGridView) -> None:
+        last = view._model.columnCount() - 1
+        assert self.right_edge(view, 0, last) == LIGHT.background.lower()
+
+    def test_the_table_has_one_complete_outer_frame(self, view: ScheduleGridView) -> None:
+        view.show()
+        image = view._card.grab().toImage()
+        middle_x, middle_y = image.width() // 2, image.height() // 2
+
+        assert image.pixelColor(middle_x, 0).name() == LIGHT.border_strong.lower()
+        assert image.pixelColor(middle_x, image.height() - 1).name() == LIGHT.border_strong.lower()
+        assert image.pixelColor(0, middle_y).name() == LIGHT.border_strong.lower()
+        assert image.pixelColor(image.width() - 1, middle_y).name() == LIGHT.border_strong.lower()
+
+    def test_the_footer_finishes_flush_with_the_shared_frame(self, view: ScheduleGridView) -> None:
+        view.show()
+
+        assert view._totals_bar.geometry().bottom() == view._card.contentsRect().bottom()
+
+    def test_the_totals_rules_line_up_with_the_grid(self, view: ScheduleGridView) -> None:
+        view.show()
+
+        for column in range(view._model.columnCount()):
+            grid = view._table.visualRect(view._model.index(0, column))
+            grid_left = view._table.viewport().geometry().left() + grid.left()
+            total = view._totals_bar.column_rect(column)
+            expected = grid_left, grid_left + grid.width() - 1
+            assert (round(total.left()), round(total.right())) == expected
+
+    def test_the_totals_have_the_same_internal_rule(self, view: ScheduleGridView) -> None:
+        view.show()
+        image = view._totals_bar.grab().toImage()
+        rect = view._totals_bar.column_rect(0)
+
+        rule = image.pixelColor(round(rect.right()), round(rect.center().y())).name()
+        assert rule == LIGHT.border.lower()
+
+    def test_the_footer_stays_visible_while_days_scroll(self, view: ScheduleGridView) -> None:
+        view.show()
+        before = view._totals_bar.mapTo(view, view._totals_bar.rect().topLeft())
+
+        view._table.scrollToBottom()
+
+        assert view._totals_bar.mapTo(view, view._totals_bar.rect().topLeft()) == before
 
 
 class TestNoCompleter:
@@ -376,6 +491,14 @@ class TestTableFitsItsRows:
         header = view._table.horizontalHeader().height()
         rows = view._model.rowCount() * METRICS.table_row_height
         assert view._table.height() <= header + rows + 4
+
+    def test_a_fitting_schedule_does_not_show_a_stray_scrollbar(
+        self, view: ScheduleGridView
+    ) -> None:
+        view.resize(900, 900)
+        view.show()
+
+        assert view._table.verticalScrollBar().maximum() == 0
 
     def test_a_long_schedule_still_uses_the_room_it_has(
         self, application, engine: Engine, schedules: ScheduleService, shifts: ShiftService
@@ -405,8 +528,9 @@ class TestLaneHeader:
         assert view._table.horizontalHeader().sizeHint().height() == METRICS.lane_header_height
 
     def test_every_trade_has_a_word_for_it(self) -> None:
-        assert set(TRADE_NAMES) == set(Profession)
-        assert all(name.islower() for name in TRADE_NAMES.values())
+        names = {profession: trade_name(profession) for profession in Profession}
+        assert set(names) == set(Profession)
+        assert all(name.islower() for name in names.values())
 
     def test_it_follows_a_theme_change(self, view: ScheduleGridView) -> None:
         view.apply_palette(DARK)

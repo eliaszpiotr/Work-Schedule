@@ -1,12 +1,10 @@
 from dataclasses import dataclass
 from datetime import date, time
 
-from work_scheduler.database.models import Profession
+from work_scheduler.i18n import Language, current_language, profession_name, translate
 from work_scheduler.services.audit import Cell, Hours
 from work_scheduler.services.schedule_service import DayInfo, ScheduleData
 from work_scheduler.services.time_text import minutes_between
-
-PROFESSION_NAMES = {Profession.PHARMACIST: "magister", Profession.TECHNICIAN: "technik"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +35,9 @@ class ScheduleReport:
     end_date: date
     days: list[DayInfo]
     people: list[Person]
+    # The language the report was built in. The sheet may be printed in Polish while the
+    # interface stands in English, so the words cannot be looked up at drawing time.
+    language: Language = Language.PL
 
     @property
     def period(self) -> str:
@@ -50,15 +51,18 @@ class ScheduleReport:
         return sum(person.minutes for person in self.people)
 
 
-def build_report(schedule: ScheduleData, cells: dict[Cell, Hours]) -> ScheduleReport:
+def build_report(
+    schedule: ScheduleData, cells: dict[Cell, Hours], language: Language | None = None
+) -> ScheduleReport:
     """Turn the open schedule and its grid into the shape the printer draws from."""
+    language = language or current_language()
     people = []
     for lane in schedule.lanes:
         shifts = {day: hours for (owner, day), hours in cells.items() if owner == lane.id}
         people.append(
             Person(
                 name=lane.name,
-                profession=PROFESSION_NAMES[lane.profession],
+                profession=profession_name(lane.profession, language),
                 shifts=dict(sorted(shifts.items())),
                 minutes=sum(minutes_between(start, end) for start, end in shifts.values()),
             )
@@ -70,8 +74,9 @@ def build_report(schedule: ScheduleData, cells: dict[Cell, Hours]) -> ScheduleRe
         name=schedule.name,
         start_date=schedule.start_date,
         end_date=schedule.end_date,
-        days=schedule.timeline(),
+        days=schedule.timeline(language),
         people=people,
+        language=language,
     )
 
 
@@ -79,7 +84,8 @@ def suggested_filename(report: ScheduleReport) -> str:
     """A name that sorts by period and survives every filesystem we might meet."""
     safe = "".join(letter if letter.isalnum() or letter in " -_" else "-" for letter in report.name)
     safe = "-".join(safe.split())
-    return f"Grafik-{safe}-{report.start_date:%Y-%m-%d}.pdf"
+    prefix = translate("export.filename_prefix", report.language)
+    return f"{prefix}-{safe}-{report.start_date:%Y-%m-%d}.pdf"
 
 
 def day_hours(day: DayInfo) -> tuple[time, time] | None:

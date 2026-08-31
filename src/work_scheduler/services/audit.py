@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import date, time
 from enum import StrEnum
 
+from work_scheduler.i18n import t
 from work_scheduler.services.coverage import uncovered_days
 from work_scheduler.services.schedule_service import ScheduleData
 from work_scheduler.services.time_text import format_range
@@ -65,14 +66,20 @@ def _empty_days(schedule: ScheduleData, cells: dict[Cell, Hours]) -> list[Findin
     if not missing:
         return []
     return [
-        Finding(Kind.EMPTY_DAY, f"Nikogo nie wpisano: {', '.join(_day(day) for day in missing)}")
+        Finding(
+            Kind.EMPTY_DAY,
+            t("audit.empty_days", days=", ".join(_day(day) for day in missing)),
+        )
     ]
 
 
 def _coverage(schedule: ScheduleData, cells: dict[Cell, Hours]) -> list[Finding]:
     problems = uncovered_days(schedule, cells)
     return [
-        Finding(Kind.NO_PHARMACIST, f"Brak magistra {_day(day)}: {problems[day].full_hours}")
+        Finding(
+            Kind.NO_PHARMACIST,
+            t("audit.no_pharmacist", day=_day(day), hours=problems[day].full_hours),
+        )
         for day in sorted(problems)
     ]
 

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from work_scheduler.database.models import Employee, Profession
 from work_scheduler.database.repositories import EmployeeRepository
 from work_scheduler.database.session import session_scope
+from work_scheduler.i18n import t
 from work_scheduler.services.errors import ConflictError, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -67,11 +68,7 @@ class EmployeeService:
             employee = self._require(session, employee_id)
 
             if repository.is_used_in_any_schedule(employee_id):
-                raise ConflictError(
-                    "Ten pracownik występuje w grafiku, więc nie można go usunąć.\n"
-                    "Oznacz go jako nieaktywnego — zniknie z nowych grafików, "
-                    "a historia zostanie zachowana."
-                )
+                raise ConflictError(t("employee.error.in_use"))
 
             repository.delete(employee)
             logger.info("Deleted employee %s", employee_id)
@@ -80,7 +77,7 @@ class EmployeeService:
     def _require(session: Session, employee_id: int) -> Employee:
         employee = EmployeeRepository(session).get(employee_id)
         if employee is None:
-            raise ValidationError("Nie znaleziono tego pracownika.")
+            raise ValidationError(t("employee.error.not_found"))
         return employee
 
     @staticmethod
@@ -88,10 +85,10 @@ class EmployeeService:
         first_name, last_name = first_name.strip(), last_name.strip()
 
         if not first_name:
-            raise ValidationError("Podaj imię.")
+            raise ValidationError(t("employee.error.first_name_required"))
         if not last_name:
-            raise ValidationError("Podaj nazwisko.")
+            raise ValidationError(t("employee.error.last_name_required"))
         if len(first_name) > MAX_NAME_LENGTH or len(last_name) > MAX_NAME_LENGTH:
-            raise ValidationError(f"Imię i nazwisko mogą mieć najwyżej {MAX_NAME_LENGTH} znaków.")
+            raise ValidationError(t("employee.error.name_too_long", max=MAX_NAME_LENGTH))
 
         return first_name, last_name

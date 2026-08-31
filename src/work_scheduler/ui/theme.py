@@ -4,6 +4,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QFontDatabase, QGuiApplication
 
+from work_scheduler.settings import ThemeMode
 from work_scheduler.ui.icons import icon_file
 from work_scheduler.ui.resources import FONT_FILE
 
@@ -127,11 +128,11 @@ class Metrics:
     dialog_width: int = 460
     weekday_label_width: int = 110
     time_field_width: int = 90
-    people_list_height: int = 232
+    # Five complete 44 px rows plus the list's one-pixel frame on both sides.
+    people_list_height: int = 222
     calendar_header_height: int = 26
     grid_column_width: int = 132
-    # Wide enough for "sb 15.08 · Wniebowzięcie NMP" to be worth reading.
-    grid_date_width: int = 212
+    grid_date_width: int = 110
 
 
 METRICS = Metrics()
@@ -164,14 +165,6 @@ def stylesheet(
         color: {p.text_primary};
     }}
     QWidget#window, QWidget#workspace {{ background: {p.background}; }}
-    QToolTip {{
-        background: {p.elevated};
-        color: {p.text_primary};
-        border: 1px solid {p.border_strong};
-        border-radius: {m.radius_sm}px;
-        padding: {m.space_1}px {m.space_2}px;
-    }}
-
     /* Sidebar ------------------------------------------------------------- */
     QFrame#sidebar {{
         background: {p.surface};
@@ -373,17 +366,12 @@ def stylesheet(
         background: {p.surface_active};
         color: {p.text_primary};
     }}
-    /* The grid draws its own cells, rules and cursor in the delegate, so nothing here
-       may paint over them. Only the frame around the whole table is left to the sheet. */
-    /* The table is the card: nesting a bordered view inside a bordered frame draws
-       the outline twice, and Qt does not clip a child to its parent's rounded
-       corners, so the square corners would sit on top of the round ones. */
+    /* This view draws only the scrolling days. The shared gridCard owns the single
+       outside frame around it and the fixed totals bar underneath. */
     QTableView[role="grid"] {{
         background: {p.elevated};
-        border: 1px solid {p.border};
-        border-bottom: none;
-        border-top-left-radius: {m.radius_lg}px;
-        border-top-right-radius: {m.radius_lg}px;
+        border: none;
+        border-radius: 0;
         selection-background-color: transparent;
         outline: none;
     }}
@@ -438,17 +426,6 @@ def stylesheet(
         background: {p.background};
         border: none;
     }}
-    /* The totals strip under the grid: its own view, so it never scrolls away. */
-    QTableView[role="totals"] {{
-        background: {p.surface};
-        border: 1px solid {p.border};
-        border-top: 1px solid {p.border_strong};
-        border-bottom-left-radius: {m.radius_lg}px;
-        border-bottom-right-radius: {m.radius_lg}px;
-        font-weight: 600;
-    }}
-    QTableView[role="totals"]::item {{ border-bottom: none; }}
-
     /* Cards, badges, avatars -----------------------------------------------
        Qt has no box-shadow, so a card is told apart by its surface and its border
        rather than by lift. Components attach QGraphicsDropShadowEffect where a
@@ -570,7 +547,11 @@ def stylesheet(
     QScrollArea#cardList {{ background: transparent; border: none; }}
     QScrollArea#cardList > QWidget > QWidget {{ background: transparent; }}
     QFrame#workspaceBody {{ background: {p.surface}; border: none; }}
-    QFrame#gridCard {{ background: transparent; border: none; }}
+    QFrame#gridCard {{
+        background: {p.surface};
+        border: 1px solid {p.border_strong};
+        border-radius: 0;
+    }}
 
     /* Calendar popup ------------------------------------------------------- */
     /* Only the navigation bar is styled. The month grid inside a QCalendarWidget is a
@@ -649,10 +630,11 @@ class ThemeManager(QObject):
 
     changed = Signal()
 
-    def __init__(self) -> None:
+    def __init__(self, mode: ThemeMode = ThemeMode.SYSTEM) -> None:
         super().__init__()
         self._font_family = load_font_family()
-        self._palette = self._palette_for_system()
+        self._mode = mode
+        self._palette = self._palette_for_mode()
 
     @property
     def palette(self) -> Palette:
@@ -662,13 +644,30 @@ class ThemeManager(QObject):
     def font_family(self) -> str:
         return self._font_family
 
+    @property
+    def mode(self) -> ThemeMode:
+        return self._mode
+
     @staticmethod
     def _palette_for_system() -> Palette:
         hints = QGuiApplication.styleHints()
         return DARK if hints.colorScheme() == Qt.ColorScheme.Dark else LIGHT
 
+    def _palette_for_mode(self) -> Palette:
+        """An explicit choice wins; only SYSTEM asks the operating system."""
+        if self._mode is ThemeMode.LIGHT:
+            return LIGHT
+        if self._mode is ThemeMode.DARK:
+            return DARK
+        return self._palette_for_system()
+
+    def set_mode(self, mode: ThemeMode, app: QGuiApplication) -> None:
+        """Switch between following the system and a chosen palette."""
+        self._mode = ThemeMode(mode)
+        self._reapply(app)
+
     def apply(self, app: QGuiApplication) -> None:
-        self._palette = self._palette_for_system()
+        self._palette = self._palette_for_mode()
         app.setStyleSheet(
             stylesheet(
                 self._palette,
@@ -679,8 +678,13 @@ class ThemeManager(QObject):
         )
 
     def follow_system(self, app: QGuiApplication) -> None:
+        """Apply now, and keep listening: the signal is ignored unless the mode is SYSTEM."""
         self.apply(app)
-        QGuiApplication.styleHints().colorSchemeChanged.connect(lambda _: self._reapply(app))
+        QGuiApplication.styleHints().colorSchemeChanged.connect(lambda _: self._system_changed(app))
+
+    def _system_changed(self, app: QGuiApplication) -> None:
+        if self._mode is ThemeMode.SYSTEM:
+            self._reapply(app)
 
     def _reapply(self, app: QGuiApplication) -> None:
         self.apply(app)

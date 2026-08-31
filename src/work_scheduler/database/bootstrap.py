@@ -8,6 +8,7 @@ from alembic.config import Config
 from sqlalchemy import Engine
 
 from work_scheduler.database.session import create_database_engine, database_url
+from work_scheduler.i18n import t
 from work_scheduler.privacy import FILE_MODE, create_data_directory, restrict
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ class DatabaseUnavailableError(RuntimeError):
 def alembic_config(database_path: Path | str) -> Config:
     """Built in code rather than read from alembic.ini, which is not shipped."""
     if not (MIGRATIONS_DIR / "env.py").is_file():
-        raise DatabaseUnavailableError(f"Brak plików migracji w {MIGRATIONS_DIR}")
+        raise DatabaseUnavailableError(t("database.error.migrations_missing", path=MIGRATIONS_DIR))
 
     config = Config()
     config.set_main_option("script_location", str(MIGRATIONS_DIR))
@@ -107,6 +108,5 @@ def prepare_database(database_path: Path) -> Engine:
         # The user gets somewhere to look; the technical detail belongs in the log,
         # which main() has already written through logger.exception.
         raise DatabaseUnavailableError(
-            f"Nie udało się otworzyć bazy danych w {database_path}.\n"
-            "Sprawdź, czy plik nie jest otwarty w innym programie i czy jest miejsce na dysku."
+            t("database.error.cannot_open", path=database_path)
         ) from error

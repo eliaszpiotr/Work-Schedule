@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from work_scheduler.database.base import utcnow
 from work_scheduler.database.models import (
-    WEEKDAY_SHORT,
     Profession,
     Schedule,
     ScheduleDayOverride,
@@ -16,6 +15,7 @@ from work_scheduler.database.models import (
 )
 from work_scheduler.database.repositories import ScheduleRepository
 from work_scheduler.database.session import session_scope
+from work_scheduler.i18n import Language, t, weekday_short
 from work_scheduler.services.errors import ValidationError
 from work_scheduler.services.holidays import holiday_name
 from work_scheduler.services.opening_hours_service import DayHours, validate_week
@@ -90,7 +90,7 @@ class DayInfo:
 
     @property
     def label(self) -> str:
-        return f"{WEEKDAY_SHORT[self.day.weekday()]} {self.day:%d.%m}"
+        return f"{weekday_short(self.day.weekday())} {self.day:%d.%m}"
 
     @property
     def weekend(self) -> bool:
@@ -113,10 +113,14 @@ class ScheduleData:
     def days(self) -> list[date]:
         return days_between(self.start_date, self.end_date)
 
-    def day_info(self, day: date) -> DayInfo:
+    def day_info(self, day: date, language: Language | None = None) -> DayInfo:
         """An exception for this date wins; otherwise a holiday closes it; otherwise
-        the day follows the weekly pattern."""
-        holiday = holiday_name(day)
+        the day follows the weekly pattern.
+
+        ``language`` exists for the printed sheet, which may be in a different language
+        than the interface that asked for it.
+        """
+        holiday = holiday_name(day, language)
 
         if day in self.overrides:
             opens, closes = self.overrides[day]
@@ -128,8 +132,8 @@ class ScheduleData:
         weekly = self.week[day.weekday()]
         return DayInfo(day, weekly.opens, weekly.closes, None, overridden=False)
 
-    def timeline(self) -> list[DayInfo]:
-        return [self.day_info(day) for day in self.days()]
+    def timeline(self, language: Language | None = None) -> list[DayInfo]:
+        return [self.day_info(day, language) for day in self.days()]
 
     def holiday_count(self) -> int:
         return sum(1 for info in self.timeline() if info.holiday)
@@ -196,7 +200,7 @@ class ScheduleService:
         with session_scope(self._session_factory) as session:
             schedule = ScheduleRepository(session).load(schedule_id)
             if schedule is None:
-                raise ValidationError("Nie znaleziono tego grafiku.")
+                raise ValidationError(t("schedule.error.not_found"))
 
             return ScheduleData(
                 id=schedule.id,
@@ -230,14 +234,14 @@ class ScheduleService:
         """Make one date depart from the weekly pattern: work a holiday, or close a
         working day. Empty hours mean closed."""
         if (opens is None) != (closes is None):
-            raise ValidationError("Podaj obie godziny albo zostaw dzień zamknięty.")
+            raise ValidationError(t("schedule.error.both_hours_or_closed"))
         if opens is not None and closes is not None and closes <= opens:
-            raise ValidationError("Godzina zamknięcia musi być późniejsza niż otwarcia.")
+            raise ValidationError(t("schedule.error.close_after_open"))
 
         with session_scope(self._session_factory) as session:
             schedule = self._require(session, schedule_id)
             if not schedule.start_date <= day <= schedule.end_date:
-                raise ValidationError("Ten dzień jest poza okresem grafiku.")
+                raise ValidationError(t("schedule.error.day_outside_period"))
 
             reopen_if_final(schedule)
             existing = next((row for row in schedule.day_overrides if row.day == day), None)
@@ -257,6 +261,32 @@ class ScheduleService:
             for row in list(schedule.day_overrides):
                 if row.day == day:
                     schedule.day_overrides.remove(row)
+
+    def update_employees(self, schedule_id: int, employee_ids: list[int]) -> bool:
+        """Replace the team without disturbing retained columns or their shifts.
+
+        Removing a person removes that schedule column and its shifts through the
+        existing delete-orphan relationship. The UI confirms that destructive case;
+        this service keeps the entire replacement atomic.
+        """
+        with session_scope(self._session_factory) as session:
+            repository = ScheduleRepository(session)
+            self._check_employees(repository, employee_ids)
+            schedule = self._require(session, schedule_id)
+            current_ids = [lane.employee_id for lane in schedule.employees]
+            if current_ids == employee_ids:
+                return False
+
+            reopened = reopen_if_final(schedule)
+            existing = {lane.employee_id: lane for lane in schedule.employees}
+            updated: list[ScheduleEmployee] = []
+            for order, employee_id in enumerate(employee_ids):
+                lane = existing.get(employee_id) or ScheduleEmployee(employee_id=employee_id)
+                lane.display_order = order
+                updated.append(lane)
+            schedule.employees = updated
+            logger.info("Schedule %s: team changed to %s people", schedule_id, len(employee_ids))
+            return reopened
 
     def finalize(self, schedule_id: int) -> None:
         """Mark the schedule checked and ready to print. Editing it undoes this."""
@@ -291,30 +321,30 @@ class ScheduleService:
     def _require(session: Session, schedule_id: int) -> Schedule:
         schedule = ScheduleRepository(session).get(schedule_id)
         if schedule is None:
-            raise ValidationError("Nie znaleziono tego grafiku.")
+            raise ValidationError(t("schedule.error.not_found"))
         return schedule
 
     @staticmethod
     def _clean_name(name: str) -> str:
         name = name.strip()
         if not name:
-            raise ValidationError("Podaj nazwę grafiku.")
+            raise ValidationError(t("schedule.error.name_required"))
         if len(name) > MAX_NAME_LENGTH:
-            raise ValidationError(f"Nazwa może mieć najwyżej {MAX_NAME_LENGTH} znaków.")
+            raise ValidationError(t("schedule.error.name_too_long", max=MAX_NAME_LENGTH))
         return name
 
     @staticmethod
     def _check_period(start_date: date, end_date: date) -> None:
         if end_date < start_date:
-            raise ValidationError("Data końca nie może być wcześniejsza niż data początku.")
+            raise ValidationError(t("schedule.error.end_before_start"))
         if (end_date - start_date).days + 1 > MAX_PERIOD_DAYS:
-            raise ValidationError(f"Grafik może obejmować najwyżej {MAX_PERIOD_DAYS} dni.")
+            raise ValidationError(t("schedule.error.period_too_long", max=MAX_PERIOD_DAYS))
 
     @staticmethod
     def _check_employees(repository: ScheduleRepository, employee_ids: list[int]) -> None:
         if not employee_ids:
-            raise ValidationError("Zaznacz co najmniej jedną osobę.")
+            raise ValidationError(t("schedule.error.no_people"))
         if len(set(employee_ids)) != len(employee_ids):
-            raise ValidationError("Ta sama osoba nie może być w grafiku dwa razy.")
+            raise ValidationError(t("schedule.error.duplicate_person"))
         if repository.existing_employee_ids(employee_ids) != set(employee_ids):
-            raise ValidationError("Któraś z zaznaczonych osób już nie istnieje.")
+            raise ValidationError(t("schedule.error.person_missing"))

@@ -3,16 +3,15 @@ from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from work_scheduler.database.models import ScheduleStatus
+from work_scheduler.i18n import t
 from work_scheduler.services import ScheduleSummary
 from work_scheduler.ui.components import Badge, Card, PlainLabel, icon_button, restyle
-from work_scheduler.ui.text import days as count_days
-from work_scheduler.ui.text import people as count_people
 from work_scheduler.ui.theme import METRICS, Palette
 
-STATUS_LABELS = {
-    ScheduleStatus.DRAFT: "Roboczy",
-    ScheduleStatus.FINAL: "Gotowy",
-    ScheduleStatus.ARCHIVED: "Archiwalny",
+STATUS_KEYS = {
+    ScheduleStatus.DRAFT: "status.draft",
+    ScheduleStatus.FINAL: "status.final",
+    ScheduleStatus.ARCHIVED: "status.archived",
 }
 STATUS_TONES = {
     ScheduleStatus.DRAFT: "neutral",
@@ -23,7 +22,7 @@ STATUS_TONES = {
 
 def status_badge(status: ScheduleStatus) -> tuple[str, str]:
     """The word and the tone for a schedule's state, in one place for every screen."""
-    return STATUS_LABELS[status], STATUS_TONES[status]
+    return t(STATUS_KEYS[status]), STATUS_TONES[status]
 
 
 class ScheduleCard(Card):
@@ -44,7 +43,7 @@ class ScheduleCard(Card):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
 
-        self._menu = icon_button("ellipsis", "Więcej", palette)
+        self._menu = icon_button("ellipsis", t("common.more"), palette)
         self._menu.clicked.connect(self._open_menu)
 
         self.body().setSpacing(METRICS.space_2)
@@ -69,8 +68,8 @@ class ScheduleCard(Card):
     def _meta(summary: ScheduleSummary) -> QWidget:
         parts = [
             summary.period,
-            count_days(summary.day_count),
-            count_people(summary.employee_count),
+            t("count.days", count=summary.day_count),
+            t("count.people", count=summary.employee_count),
         ]
         label = PlainLabel("  ·  ".join(parts))
         label.setObjectName("secondaryText")

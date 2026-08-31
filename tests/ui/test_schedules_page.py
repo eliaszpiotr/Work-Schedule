@@ -50,6 +50,7 @@ def test_opening_a_schedule_shows_its_grid(page: SchedulesPage, schedule_id: int
     assert page._stack.currentIndex() != LIST_PAGE
     assert page._grid is not None
     assert page._grid._model.rowCount() == 5
+    assert page._grid._edit_team.isEnabled()
 
 
 def test_going_back_returns_to_the_list(page: SchedulesPage, schedule_id: int) -> None:

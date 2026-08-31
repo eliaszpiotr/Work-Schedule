@@ -1,6 +1,7 @@
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QListWidget,
@@ -13,12 +14,14 @@ from PySide6.QtWidgets import (
 from sqlalchemy.orm import Session, sessionmaker
 
 from work_scheduler.config import AppConfig
+from work_scheduler.i18n import Language, set_language, t
 from work_scheduler.services import (
     EmployeeService,
     OpeningHoursService,
     ScheduleService,
     ShiftService,
 )
+from work_scheduler.settings import Settings, ThemeMode
 from work_scheduler.ui.components import BrandMark, PlainLabel, icon_button, restyle
 from work_scheduler.ui.employees import EmployeesView
 from work_scheduler.ui.icons import load_icon
@@ -26,18 +29,14 @@ from work_scheduler.ui.schedules.schedules_page import SchedulesPage
 from work_scheduler.ui.settings import SettingsView
 from work_scheduler.ui.theme import METRICS, ThemeManager
 
-PAGES = (
-    ("Grafiki", "calendar-days"),
-    ("Pracownicy", "users"),
-    ("Ustawienia", "settings"),
-)
+# Names are looked up when the sidebar is built, not when the module is imported,
+# so switching language rebuilds them.
+PAGE_ICONS = ("calendar-days", "users", "settings")
+PAGE_KEYS = ("nav.schedules", "nav.employees", "nav.settings")
 SCHEDULES_PAGE = 0
 
 # The spacers around the collapse button, by position in the brand row.
 LEADING_STRETCH, TRAILING_STRETCH = 2, 4
-
-COLLAPSE_TOOLTIP = "Zwiń panel boczny (Ctrl+B)"
-EXPAND_TOOLTIP = "Rozwiń panel boczny (Ctrl+B)"
 
 
 class MainWindow(QMainWindow):
@@ -46,10 +45,13 @@ class MainWindow(QMainWindow):
         config: AppConfig,
         session_factory: sessionmaker[Session],
         theme: ThemeManager | None = None,
+        settings: Settings | None = None,
     ) -> None:
         super().__init__()
         self._config = config
-        self._theme = theme or ThemeManager()
+        self._settings = settings if settings is not None else Settings()
+        self._session_factory = session_factory
+        self._theme = theme or ThemeManager(self._settings.theme)
         self._navigation = QListWidget()
         self._pages = QStackedWidget()
         self._collapsed = False
@@ -58,19 +60,61 @@ class MainWindow(QMainWindow):
         self.resize(1180, 760)
         self.setMinimumSize(880, 560)
 
-        palette = self._theme.palette
-        self._schedules = SchedulesPage(
-            ScheduleService(session_factory),
-            EmployeeService(session_factory),
-            OpeningHoursService(session_factory),
-            ShiftService(session_factory),
-            palette,
-        )
-        self._employees = EmployeesView(EmployeeService(session_factory), palette)
-        self._settings = SettingsView(OpeningHoursService(session_factory), palette)
-
+        self._create_pages()
         self._build()
         self._theme.changed.connect(self._refresh_icons)
+
+    def _create_pages(self) -> None:
+        """Built here rather than inline, because a language switch builds them again."""
+        palette = self._theme.palette
+        factory = self._session_factory
+        self._schedules = SchedulesPage(
+            ScheduleService(factory),
+            EmployeeService(factory),
+            OpeningHoursService(factory),
+            ShiftService(factory),
+            palette,
+        )
+        self._employees = EmployeesView(EmployeeService(factory), palette)
+        self._settings_view = SettingsView(OpeningHoursService(factory), palette, self._settings)
+        self._settings_view.language_changed.connect(self.set_language)
+        self._settings_view.theme_changed.connect(self.set_theme)
+
+    def _pages_in_order(self) -> tuple[QWidget, ...]:
+        return (self._schedules, self._employees, self._settings_view)
+
+    def set_language(self, language: Language) -> None:
+        """Rebuild every screen in the new language, the way a theme change repaints them.
+
+        An open schedule closes back to the list: its widgets are thrown away with the
+        rest, and re-opening it is one click.
+        """
+        self._settings.language = language
+        set_language(language)
+
+        row = self._navigation.currentRow()
+        for page in self._pages_in_order():
+            self._pages.removeWidget(page)
+            page.setParent(None)
+            page.deleteLater()
+
+        self._create_pages()
+        for page in self._pages_in_order():
+            self._pages.addWidget(page)
+
+        self._fill_navigation()
+        self._section.setText(t("nav.section"))
+        self._collapse.setAccessibleName(
+            t("sidebar.expand") if self._collapsed else t("sidebar.collapse")
+        )
+        self._navigation.setCurrentRow(row)
+        self._show_page(row)
+
+    def set_theme(self, mode: ThemeMode) -> None:
+        self._settings.theme = mode
+        application = QApplication.instance()
+        if application is not None:
+            self._theme.set_mode(mode, application)
 
     def _build(self) -> None:
         root = QWidget()
@@ -81,19 +125,14 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._sidebar())
         layout.addWidget(self._pages, stretch=1)
 
-        self._pages.addWidget(self._schedules)
-        self._pages.addWidget(self._employees)
-        self._pages.addWidget(self._settings)
+        for page in self._pages_in_order():
+            self._pages.addWidget(page)
 
         self._navigation.currentRowChanged.connect(self._show_page)
         self._navigation.setCurrentRow(SCHEDULES_PAGE)
 
         self.set_sidebar_collapsed(self._collapsed)
         self.setCentralWidget(root)
-        # The database path is support information, not something to give a permanent
-        # strip at the bottom of every screen. It hangs off the sidebar instead, which
-        # is there whether the panel is collapsed or not.
-        self._sidebar_frame.setToolTip(self.database_summary())
 
     def _sidebar(self) -> QFrame:
         sidebar = self._sidebar_frame = QFrame()
@@ -109,7 +148,7 @@ class MainWindow(QMainWindow):
         self._mark = BrandMark(self._theme.palette)
         self._brand_name = PlainLabel(self._config.app_name)
         self._brand_name.setObjectName("brand")
-        self._collapse = icon_button("panel-left", COLLAPSE_TOOLTIP, self._theme.palette)
+        self._collapse = icon_button("panel-left", t("sidebar.collapse"), self._theme.palette)
         self._collapse.clicked.connect(self.toggle_sidebar)
 
         self._brand = QWidget()
@@ -124,7 +163,7 @@ class MainWindow(QMainWindow):
         self._brand_row.addWidget(self._collapse)
         self._brand_row.addStretch(0)
 
-        self._section = PlainLabel("WIDOKI")
+        self._section = PlainLabel(t("nav.section"))
         self._section.setObjectName("sectionLabel")
 
         self._navigation.setObjectName("navigation")
@@ -143,6 +182,9 @@ class MainWindow(QMainWindow):
         return sidebar
 
     def _fill_navigation(self) -> None:
+        # Refilled on a language change as well as on a collapse, so it starts empty
+        # rather than appending a second set of entries underneath the first.
+        self._navigation.clear()
         colour = self._theme.palette.text_secondary
         # Collapsed, the highlight is the only thing saying which screen is open, so it
         # has to be a square centred under its icon rather than a band as wide as the
@@ -152,9 +194,10 @@ class MainWindow(QMainWindow):
         # than the viewport pushes every icon off centre by the overflow.
         size = QSize(0, side) if self._collapsed else QSize(0, METRICS.nav_item_height + 4)
 
-        for name, icon in PAGES:
+        for key, icon in zip(PAGE_KEYS, PAGE_ICONS, strict=True):
+            name = t(key)
             item = QListWidgetItem(load_icon(icon, colour), "" if self._collapsed else name)
-            item.setToolTip(name)
+            item.setData(Qt.ItemDataRole.AccessibleTextRole, name)
             item.setSizeHint(size)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._navigation.addItem(item)
@@ -180,8 +223,9 @@ class MainWindow(QMainWindow):
         )
         self._brand_name.setVisible(not collapsed)
         self._section.setVisible(not collapsed)
-        self._collapse.setToolTip(EXPAND_TOOLTIP if collapsed else COLLAPSE_TOOLTIP)
-        self._collapse.setAccessibleName(self._collapse.toolTip())
+        self._collapse.setAccessibleName(
+            t("sidebar.expand") if collapsed else t("sidebar.collapse")
+        )
 
         # Collapsed, the two controls do not fit side by side; the mark steps aside so
         # the one that brings the sidebar back is the one that stays reachable.
@@ -203,7 +247,6 @@ class MainWindow(QMainWindow):
         restyle(self._navigation)
 
         row = self._navigation.currentRow()
-        self._navigation.clear()
         self._fill_navigation()
         self._navigation.setCurrentRow(row)
 
@@ -217,10 +260,7 @@ class MainWindow(QMainWindow):
     def _refresh_icons(self) -> None:
         palette = self._theme.palette
         self._mark.apply_palette(palette)
-        for row, (_, icon) in enumerate(PAGES):
+        for row, icon in enumerate(PAGE_ICONS):
             self._navigation.item(row).setIcon(load_icon(icon, palette.text_secondary))
-        for page in (self._schedules, self._employees, self._settings):
+        for page in self._pages_in_order():
             page.apply_palette(palette)
-
-    def database_summary(self) -> str:
-        return f"Baza: {self._config.database_path}"

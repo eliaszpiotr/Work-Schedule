@@ -1,3 +1,5 @@
+from PySide6.QtCore import Qt
+
 from work_scheduler import __version__
 from work_scheduler.config import AppConfig
 from work_scheduler.ui.theme import DARK, LIGHT, METRICS, stylesheet
@@ -24,12 +26,6 @@ def test_main_window_opens(application) -> None:
     assert window.isVisible()
     assert window.windowTitle() == "Work Scheduler"
     assert window.centralWidget() is not None
-
-
-def test_main_window_shows_the_database_location(application) -> None:
-    _, window = application
-
-    assert "Baza:" in window.database_summary()
 
 
 def test_a_theme_change_reaches_the_employees_screen(application) -> None:
@@ -60,15 +56,15 @@ def test_the_last_entry_opens_the_settings_screen(application) -> None:
     last = window._navigation.count() - 1
     window._navigation.setCurrentRow(last)
 
-    assert window._pages.currentWidget() is window._settings
+    assert window._pages.currentWidget() is window._settings_view
 
 
-def test_the_database_path_is_not_a_permanent_strip(application) -> None:
-    """Support information, not something to give a line of every screen."""
+def test_the_database_path_is_not_exposed_in_the_main_interface(application) -> None:
+    """An implementation detail must not appear as a tooltip over the whole sidebar."""
     _, window = application
 
     assert window.statusBar().currentMessage() == ""
-    assert "Baza:" in window._sidebar_frame.toolTip()
+    assert window._sidebar_frame.toolTip() == ""
 
 
 def test_both_themes_build_a_stylesheet_with_every_new_token(application) -> None:
@@ -86,7 +82,7 @@ def test_every_screen_survives_a_theme_change(application) -> None:
 
     window._employees.apply_palette(DARK if before is LIGHT else LIGHT)
     window._schedules.apply_palette(DARK if before is LIGHT else LIGHT)
-    window._settings.apply_palette(DARK if before is LIGHT else LIGHT)
+    window._settings_view.apply_palette(DARK if before is LIGHT else LIGHT)
 
     assert window._employees._delegate._palette is not before
 
@@ -112,12 +108,15 @@ class TestSidebar:
         assert window._navigation.item(0).text() == ""
         window.set_sidebar_collapsed(False)
 
-    def test_a_collapsed_entry_still_says_what_it_is(self, application) -> None:
-        """Icon-only navigation is unreadable without one."""
+    def test_a_collapsed_entry_keeps_an_accessible_name_without_a_tooltip(
+        self, application
+    ) -> None:
         _, window = application
         window.set_sidebar_collapsed(True)
 
-        assert window._navigation.item(0).toolTip() == "Grafiki"
+        item = window._navigation.item(0)
+        assert item.toolTip() == ""
+        assert item.data(Qt.ItemDataRole.AccessibleTextRole) == "Grafiki"
         window.set_sidebar_collapsed(False)
 
     def test_the_chosen_screen_survives_the_toggle(self, application) -> None:

@@ -7,7 +7,14 @@ from PySide6.QtGui import QImage, QPageLayout, QPainter
 from PySide6.QtPdf import QPdfDocument
 
 from work_scheduler.export import ORIENTATION, page_count, save_pdf
-from work_scheduler.export.pages import day_fill, draw_grid, open_runs, period_words
+from work_scheduler.export.pages import (
+    DATE_COLUMN_SHARE,
+    MAX_ROW_HEIGHT,
+    day_fill,
+    draw_grid,
+    open_runs,
+    period_words,
+)
 from work_scheduler.export.paint import (
     CLOSED_FILL,
     HOLIDAY_FILL,
@@ -15,6 +22,7 @@ from work_scheduler.export.paint import (
     SUNDAY_FILL,
     Sheet,
 )
+from work_scheduler.i18n import Language
 from work_scheduler.services.report import Person, ScheduleReport, suggested_filename
 from work_scheduler.services.schedule_service import DayInfo, days_between
 
@@ -350,16 +358,16 @@ class TestDayColour:
 
 
 class TestColumnRules:
-    """A closed day fills its row with one word, so no rule may be drawn across it."""
+    """Every row is ruled the same. A gap in the table reads as a hole punched in it."""
 
     def test_an_uninterrupted_week_is_one_run(self) -> None:
         days = [info_for(day) for day in days_between(date(2026, 8, 3), date(2026, 8, 7))]
         assert open_runs(days) == [(0, 5)]
 
-    def test_a_holiday_splits_the_run_in_two(self) -> None:
+    def test_a_holiday_does_not_break_the_run(self) -> None:
         days = [info_for(day) for day in days_between(date(2026, 8, 3), date(2026, 8, 7))]
         days[2] = info_for(date(2026, 8, 5), holiday="Święto", closed=True)
-        assert open_runs(days) == [(0, 2), (3, 5)]
+        assert open_runs(days) == [(0, 5)]
 
     def test_a_shut_day_without_a_name_keeps_its_rules(self) -> None:
         """A closed Sunday is a normal row in a different colour, not a gap."""
@@ -367,8 +375,63 @@ class TestColumnRules:
         days[-1] = info_for(date(2026, 8, 9), closed=True)
         assert open_runs(days) == [(0, 7)]
 
-    def test_a_holiday_at_each_end_is_left_out(self) -> None:
+    def test_a_holiday_at_each_end_still_leaves_one_run(self) -> None:
         days = [info_for(day) for day in days_between(date(2026, 8, 3), date(2026, 8, 7))]
         days[0] = info_for(date(2026, 8, 3), holiday="Święto", closed=True)
         days[-1] = info_for(date(2026, 8, 7), holiday="Święto", closed=True)
-        assert open_runs(days) == [(1, 4)]
+        assert open_runs(days) == [(0, 5)]
+
+    def test_a_period_with_no_days_has_nothing_to_rule(self) -> None:
+        assert open_runs([]) == []
+
+    @pytest.mark.parametrize(
+        ("language", "holiday"),
+        [
+            (Language.PL, "Wniebowzięcie NMP"),
+            (Language.EN, "Assumption of Mary"),
+        ],
+    )
+    def test_rendered_holiday_keeps_every_vertical_rule(
+        self,
+        application,
+        language: Language,
+        holiday: str,  # noqa: ANN001
+    ) -> None:
+        """The label may never paint a hole over the table in either language."""
+        report = make_report(people=3)
+        holiday_index = 2
+        holiday_day = report.days[holiday_index].day
+        days = list(report.days)
+        days[holiday_index] = DayInfo(holiday_day, None, None, holiday, False)
+        report = ScheduleReport(
+            report.name,
+            report.start_date,
+            report.end_date,
+            days,
+            report.people,
+            language,
+        )
+
+        image = QImage(1200, 850, QImage.Format.Format_RGB32)
+        image.fill(0xFFFFFFFF)
+        painter = QPainter(image)
+        sheet = Sheet.open(painter, image)
+        draw_grid(sheet, report, totals=True)
+
+        top = 92
+        units = len(report.days) + 1.8 + 1.4
+        row_height = min((sheet.height - top - 18) / units, MAX_ROW_HEIGHT)
+        head_height = row_height * 1.8
+        y = top + head_height + (holiday_index + 0.5) * row_height
+        date_width = sheet.width * DATE_COLUMN_SHARE
+        column_width = (sheet.width - date_width) / len(report.people)
+        rules = [date_width + index * column_width for index in range(len(report.people))]
+        scale = sheet.scale
+
+        sheet.close()
+        painter.end()
+
+        for rule in rules:
+            x, row = round(rule * scale), round(y * scale)
+            pixels = [image.pixelColor(x + offset, row).lightness() for offset in range(-2, 3)]
+            assert min(pixels) < 160

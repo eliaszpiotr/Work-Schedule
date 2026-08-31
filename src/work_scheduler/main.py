@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from work_scheduler.config import AppConfig
 from work_scheduler.database.bootstrap import DatabaseUnavailableError, prepare_database
 from work_scheduler.database.session import create_session_factory
+from work_scheduler.i18n import set_language
 from work_scheduler.logging_config import setup_logging
+from work_scheduler.settings import Settings
 from work_scheduler.ui.main_window import MainWindow
 from work_scheduler.ui.resources import APP_ICON
 from work_scheduler.ui.theme import ThemeManager
@@ -23,10 +25,14 @@ def create_qt_application(
     app.setApplicationName(config.app_name)
     app.setApplicationVersion(config.version)
     app.setOrganizationName(config.organization_name)
+    # QSettings needs the names above, so the stored choices are read only now. The
+    # language has to be in place before any window builds a label.
+    settings = Settings()
+    set_language(settings.language)
     if APP_ICON.is_file():
         app.setWindowIcon(QIcon(str(APP_ICON)))
 
-    theme = ThemeManager()
+    theme = ThemeManager(settings.theme)
     theme.follow_system(app)
     return app, theme
 

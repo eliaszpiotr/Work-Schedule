@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QMessageBox, QStackedWidget, QVBoxLayout, QWidget
 
+from work_scheduler.i18n import t
 from work_scheduler.services import (
     EmployeeService,
     OpeningHoursService,
@@ -28,6 +29,7 @@ class SchedulesPage(QWidget):
     ) -> None:
         super().__init__()
         self._schedules = schedules
+        self._employees = employees
         self._shifts = shifts
         self._palette = palette
         self._grid: ScheduleGridView | None = None
@@ -45,12 +47,18 @@ class SchedulesPage(QWidget):
         try:
             schedule = self._schedules.open_schedule(schedule_id)
         except ServiceError as error:
-            QMessageBox.warning(self, "Nie udało się otworzyć", str(error))
+            QMessageBox.warning(self, t("schedules.open_failed"), str(error))
             self._list.reload()
             return
 
         self._drop_grid()
-        self._grid = ScheduleGridView(schedule, self._schedules, self._shifts, self._palette)
+        self._grid = ScheduleGridView(
+            schedule,
+            self._schedules,
+            self._shifts,
+            self._palette,
+            employees=self._employees,
+        )
         self._grid.closed.connect(self.close_grid)
         self._grid.finalized.connect(self._after_finalize)
         self._stack.addWidget(self._grid)

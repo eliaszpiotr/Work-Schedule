@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from work_scheduler.database.models import Shift
 from work_scheduler.database.repositories.shift_repository import ShiftRepository
 from work_scheduler.database.session import session_scope
+from work_scheduler.i18n import t
 from work_scheduler.services.errors import ValidationError
 from work_scheduler.services.schedule_service import reopen_if_final
 from work_scheduler.services.time_text import minutes_between
@@ -46,15 +47,15 @@ class ShiftService:
     ) -> bool:
         """Returns True when the write pulled a closed schedule back to draft."""
         if end <= start:
-            raise ValidationError("Godzina końca musi być późniejsza niż godzina początku.")
+            raise ValidationError(t("shift.error.end_after_start"))
 
         with session_scope(self._session_factory) as session:
             repository = ShiftRepository(session)
             lane = repository.lane(schedule_employee_id)
             if lane is None:
-                raise ValidationError("Nie znaleziono tej osoby w grafiku.")
+                raise ValidationError(t("shift.error.person_not_in_schedule"))
             if not lane.schedule.start_date <= shift_date <= lane.schedule.end_date:
-                raise ValidationError("Ten dzień jest poza okresem grafiku.")
+                raise ValidationError(t("schedule.error.day_outside_period"))
 
             reopened = reopen_if_final(lane.schedule)
             existing = repository.find(schedule_employee_id, shift_date)

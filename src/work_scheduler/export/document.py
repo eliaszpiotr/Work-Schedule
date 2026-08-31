@@ -7,6 +7,7 @@ from PySide6.QtGui import QPageLayout, QPageSize, QPainter, QPdfWriter
 
 from work_scheduler.export.pages import draw_grid, draw_person
 from work_scheduler.export.paint import Sheet
+from work_scheduler.i18n import translate
 from work_scheduler.privacy import create_private_file
 from work_scheduler.services.report import ScheduleReport
 
@@ -69,7 +70,7 @@ def save_pdf(report: ScheduleReport, path: Path) -> Path:
         writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
         writer.setPageMargins(MARGINS, QPageLayout.Unit.Millimeter)
         writer.setResolution(RESOLUTION)
-        writer.setTitle(f"{report.name} — grafik pracy")
+        writer.setTitle(translate("export.document_name", report.language, name=report.name))
 
         render(report, writer)
         # Qt writes out the document when the writer is destroyed, so it has to go
