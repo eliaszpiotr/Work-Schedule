@@ -9,7 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/eliaszpiotr/Work-Schedule/releases/latest"><img src="https://img.shields.io/github/v/release/eliaszpiotr/Work-Schedule?display_name=tag&sort=semver" alt="Latest release"></a>
+<a href="https://github.com/eliaszpiotr/Work-Schedule/releases/tag/v0.2.0">
+  <img src="https://img.shields.io/badge/release-v0.2.0-blue" alt="Release v0.2.0"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white" alt="Python 3.12"></a>
   <a href="https://doc.qt.io/qtforpython-6/"><img src="https://img.shields.io/badge/UI-PySide6-41CD52?logo=qt&logoColor=white" alt="PySide6"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0--only-663399" alt="GNU AGPL 3.0 only"></a>
