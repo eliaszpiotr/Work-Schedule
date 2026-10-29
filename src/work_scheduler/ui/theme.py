@@ -546,6 +546,7 @@ def stylesheet(
 
     QScrollArea#cardList {{ background: transparent; border: none; }}
     QScrollArea#cardList > QWidget > QWidget {{ background: transparent; }}
+    QScrollArea#settingsScroll {{ background: {p.surface}; border: none; }}
     QFrame#workspaceBody {{ background: {p.surface}; border: none; }}
     QFrame#gridCard {{
         background: {p.surface};

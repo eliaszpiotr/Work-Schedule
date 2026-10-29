@@ -1,5 +1,5 @@
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QFormLayout, QFrame, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QFormLayout, QFrame, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 
 from work_scheduler.i18n import Language, t
 from work_scheduler.services import OpeningHoursService, ServiceError
@@ -92,7 +92,16 @@ class SettingsView(QWidget):
         body.addWidget(card)
         body.addWidget(self._status)
         body.addStretch()
-        layout.addWidget(panel, stretch=1)
+
+        # At the window's minimum height the two cards need more room than the page.
+        # Scroll the content instead of squeezing the seven time fields over one another.
+        scroller = QScrollArea()
+        scroller.setObjectName("settingsScroll")
+        scroller.setFrameShape(QFrame.Shape.NoFrame)
+        scroller.setWidgetResizable(True)
+        scroller.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroller.setWidget(panel)
+        layout.addWidget(scroller, stretch=1)
 
     def _appearance_card(self) -> Card:
         """Language and theme belong to this machine, so they sit apart from the hours."""

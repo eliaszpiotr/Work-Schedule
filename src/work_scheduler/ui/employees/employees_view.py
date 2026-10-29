@@ -201,6 +201,10 @@ class EmployeesView(QWidget):
 
     def _fit_to_rows(self) -> None:
         """Stop at the last person, and start scrolling only when they stop fitting."""
+        if self._stack.currentIndex() == 1:
+            # The empty state needs the available space for its message and action.
+            self._stack.setMaximumHeight(self.maximumHeight())
+            return
         frame = 2 * self._table.frameWidth()
         content = (
             max(self._table.horizontalHeader().height(), METRICS.table_row_height)
@@ -258,6 +262,7 @@ class EmployeesView(QWidget):
         employees = self._service.list_employees(include_inactive=self._show_inactive.isChecked())
         self._model.set_employees(employees)
         self._stack.setCurrentIndex(0 if employees else 1)
+        self._fit_to_rows()
 
     def selected_employee(self) -> Employee | None:
         indexes = self._table.selectionModel().selectedRows()

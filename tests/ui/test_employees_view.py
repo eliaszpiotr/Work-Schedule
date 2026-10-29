@@ -176,7 +176,7 @@ class TestTableUsesTheWindow:
 
         assert not view._table.verticalScrollBar().isVisible()
 
-    def test_the_cap_follows_the_number_of_people(
+    def test_empty_state_fills_space_and_the_table_caps_to_its_rows(
         self, application, service: EmployeeService
     ) -> None:
         app, _ = application
@@ -185,12 +185,14 @@ class TestTableUsesTheWindow:
         view.show()
         app.processEvents()
         empty = view._stack.maximumHeight()
+        assert view._stack.height() > 200
 
         service.create("Anna", "Kowalska", Profession.PHARMACIST)
         view.reload()
         app.processEvents()
 
-        assert view._stack.maximumHeight() > empty
+        assert view._stack.maximumHeight() < empty
+        assert view._stack.height() == view._stack.maximumHeight()
 
 
 class TestBadgeColours:
