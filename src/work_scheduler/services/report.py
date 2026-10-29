@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, time
 
 from work_scheduler.i18n import Language, current_language, profession_name, translate
@@ -15,6 +15,7 @@ class Person:
     profession: str
     shifts: dict[date, Hours]
     minutes: int
+    absences: dict[date, str] = field(default_factory=dict)
 
     @property
     def surname(self) -> str:
@@ -52,10 +53,14 @@ class ScheduleReport:
 
 
 def build_report(
-    schedule: ScheduleData, cells: dict[Cell, Hours], language: Language | None = None
+    schedule: ScheduleData,
+    cells: dict[Cell, Hours],
+    language: Language | None = None,
+    absences: dict[Cell, str] | None = None,
 ) -> ScheduleReport:
     """Turn the open schedule and its grid into the shape the printer draws from."""
     language = language or current_language()
+    absences = absences or {}
     people = []
     for lane in schedule.lanes:
         shifts = {day: hours for (owner, day), hours in cells.items() if owner == lane.id}
@@ -65,6 +70,7 @@ def build_report(
                 profession=profession_name(lane.profession, language),
                 shifts=dict(sorted(shifts.items())),
                 minutes=sum(minutes_between(start, end) for start, end in shifts.values()),
+                absences={day: code for (owner, day), code in absences.items() if owner == lane.id},
             )
         )
 

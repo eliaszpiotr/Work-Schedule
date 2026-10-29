@@ -1,3 +1,4 @@
+from work_scheduler.database.models.absence import Absence
 from work_scheduler.database.models.employee import Employee, Profession
 from work_scheduler.database.models.opening_hours import (
     OpeningHours,
@@ -9,6 +10,7 @@ from work_scheduler.database.models.schedule_employee import ScheduleEmployee
 from work_scheduler.database.models.shift import Shift
 
 __all__ = [
+    "Absence",
     "Employee",
     "OpeningHours",
     "Profession",

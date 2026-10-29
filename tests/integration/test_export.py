@@ -1,4 +1,5 @@
 from collections import Counter
+from dataclasses import replace
 from datetime import date, time
 from pathlib import Path
 
@@ -125,6 +126,34 @@ class TestOrientation:
 
 
 class TestContents:
+    def test_absence_is_printed_on_team_and_person_pages(
+        self,
+        tmp_path: Path,
+        application,
+    ) -> None:
+        report = make_report()
+        day = AUGUST[0]
+        report.people[0].shifts.pop(day)
+        report.people[0].absences[day] = "ZCh"
+        report.people[0] = replace(report.people[0], minutes=report.people[0].minutes - 480)
+        document = read(save_pdf(report, tmp_path / "nieobecnosc.pdf"))
+        assert "ZCh" in text_of(document, 0)
+        assert "ZCh" in text_of(document, 1)
+        assert "ZCh" in text_of(document, 2)
+        assert "zwolnienie lekarskie" in text_of(document, 0)
+
+    def test_english_printout_uses_english_codes(self, tmp_path: Path, application) -> None:
+        report = make_report()
+        report.people[0].shifts.pop(AUGUST[0])
+        report.people[0].absences[AUGUST[0]] = "U"
+        report.people[0] = replace(report.people[0], minutes=report.people[0].minutes - 480)
+        report = replace(report, language=Language.EN)
+        document = read(save_pdf(report, tmp_path / "vacation.pdf"))
+        for page in (0, 1, 2):
+            text = text_of(document, page)
+            assert "V — vacation" in text
+            assert "U — urlop" not in text
+
     def test_the_managers_page_carries_the_names_and_the_total(self, written: Path) -> None:
         page = text_of(read(written), 0)
         assert "Nazwisko0" in page

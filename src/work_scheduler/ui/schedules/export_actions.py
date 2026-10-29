@@ -21,7 +21,12 @@ def build(
 ) -> ScheduleReport:
     """The sheet is written in the printout language, which need not be the interface's."""
     language = language or Settings().language_for_print()
-    return build_report(schedules.open_schedule(schedule_id), shifts.grid(schedule_id), language)
+    return build_report(
+        schedules.open_schedule(schedule_id),
+        shifts.grid(schedule_id),
+        language,
+        shifts.absences(schedule_id),
+    )
 
 
 def save_as_pdf(

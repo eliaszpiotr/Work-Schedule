@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from work_scheduler.database.base import Base
 
 if TYPE_CHECKING:
+    from work_scheduler.database.models.absence import Absence
     from work_scheduler.database.models.employee import Employee
     from work_scheduler.database.models.schedule import Schedule
     from work_scheduler.database.models.shift import Shift
@@ -35,4 +36,10 @@ class ScheduleEmployee(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
         order_by="Shift.shift_date",
+    )
+    absences: Mapped[list["Absence"]] = relationship(
+        back_populates="schedule_employee",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="Absence.absence_date",
     )

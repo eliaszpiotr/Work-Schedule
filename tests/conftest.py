@@ -7,6 +7,7 @@ from collections.abc import Iterator  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import pytest  # noqa: E402
+from PySide6.QtCore import QSettings  # noqa: E402
 from sqlalchemy import Engine  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
@@ -15,9 +16,27 @@ from work_scheduler.database.session import (  # noqa: E402
     create_database_engine,
     create_session_factory,
 )
+from work_scheduler.i18n import Language, current_language, set_language  # noqa: E402
 from work_scheduler.main import create_application  # noqa: E402
 
 TEST_CATEGORIES = {"unit", "integration", "ui"}
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolated_preferences(tmp_path_factory: pytest.TempPathFactory):
+    """Tests must not inherit the language saved by the person running them."""
+    previous_language = current_language()
+    previous_format = QSettings.defaultFormat()
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(
+        QSettings.Format.IniFormat,
+        QSettings.Scope.UserScope,
+        str(tmp_path_factory.mktemp("preferences")),
+    )
+    set_language(Language.PL)
+    yield
+    set_language(previous_language)
+    QSettings.setDefaultFormat(previous_format)
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:

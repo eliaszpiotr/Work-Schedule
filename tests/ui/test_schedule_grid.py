@@ -7,6 +7,7 @@ from sqlalchemy import Engine
 
 from work_scheduler.database.models import Profession
 from work_scheduler.database.session import create_session_factory
+from work_scheduler.i18n import Language, current_language, set_language
 from work_scheduler.services import (
     DayHours,
     EmployeeService,
@@ -20,6 +21,7 @@ from work_scheduler.ui.schedules.schedule_grid import (
     LaneHeader,
     ScheduleGridModel,
     ScheduleGridView,
+    absence_help_text,
     trade_name,
 )
 from work_scheduler.ui.theme import DARK, LIGHT, METRICS
@@ -112,6 +114,80 @@ class TestShape:
 
 
 class TestEditing:
+    @pytest.mark.parametrize(
+        ("typed", "expected"),
+        [
+            ("ZCh", "ZCh"),
+            ("urlop", "U"),
+            ("Wolne za nadgodziny", "WN"),
+            ("Opieka nad dzieckiem", "OD"),
+            ("sick leave", "ZCh"),
+            ("vacation", "U"),
+            ("overtime time off", "WN"),
+            ("child care leave", "OD"),
+            ("SL", "ZCh"),
+            ("sl", "ZCh"),
+            ("V", "U"),
+            ("v", "U"),
+            ("TO", "WN"),
+            ("to", "WN"),
+            ("CC", "OD"),
+            ("cc", "OD"),
+            ("TOIL", "WN"),
+            ("CCL", "OD"),
+        ],
+    )
+    def test_absence_codes_and_names_are_accepted(
+        self,
+        model: ScheduleGridModel,
+        schedule: ScheduleData,
+        shifts: ShiftService,
+        typed: str,
+        expected: str,
+    ) -> None:
+        index = model.index(0, 0)
+        assert model.setData(index, typed)
+        assert index.data() == expected
+        assert shifts.absences(schedule.id)[schedule.lanes[0].id, date(2026, 8, 12)] == expected
+        assert model.totals() == [0, 0]
+
+    def test_absence_is_ignored_for_coverage(self, model: ScheduleGridModel) -> None:
+        model.setData(model.index(0, 1), "8-20")
+        model.setData(model.index(0, 0), "ZCh")
+        assert date(2026, 8, 12) in {gap.day for gap in model.uncovered()}
+
+    @pytest.mark.parametrize(
+        ("polish", "english", "meaning"),
+        [
+            ("ZCh", "SL", "sick leave"),
+            ("U", "V", "vacation"),
+            ("WN", "TO", "time off in lieu"),
+            ("OD", "CC", "child care leave"),
+        ],
+    )
+    def test_existing_absence_uses_the_current_language_code(
+        self,
+        model: ScheduleGridModel,
+        schedule: ScheduleData,
+        shifts: ShiftService,
+        polish: str,
+        english: str,
+        meaning: str,
+    ) -> None:
+        index = model.index(0, 0)
+        model.setData(index, polish)
+        before = current_language()
+        try:
+            set_language(Language.EN)
+            assert index.data() == english
+            assert index.data(Qt.ItemDataRole.EditRole) == english
+            assert index.data(Qt.ItemDataRole.ToolTipRole) == f"{english} — {meaning}"
+            model.setData(index, english)
+            assert shifts.absences(schedule.id)[schedule.lanes[0].id, date(2026, 8, 12)] == polish
+        finally:
+            set_language(before)
+        assert index.data() == polish
+
     def test_typing_a_range_stores_a_shift(
         self, model: ScheduleGridModel, schedule: ScheduleData, shifts: ShiftService
     ) -> None:
@@ -539,6 +615,31 @@ class TestLaneHeader:
 
 
 class TestLegend:
+    def test_question_mark_explains_every_code_on_hover(self, view: ScheduleGridView) -> None:
+        view.show()
+        assert view._absence_help.isVisible()
+        assert view._absence_help.mapTo(view, QPoint(0, 0)).x() >= 0
+        right_edge = view._absence_help.mapTo(view, QPoint(view._absence_help.width(), 0)).x()
+        assert right_edge <= view.width()
+        assert view._absence_help.text() == "?"
+        for code, meaning in (
+            ("ZCh", "zwolnienie lekarskie"),
+            ("U", "urlop"),
+            ("WN", "wolne za nadgodziny"),
+            ("OD", "opieka nad dzieckiem"),
+        ):
+            assert f"{code} — {meaning}" in view._absence_help.toolTip()
+
+    def test_question_mark_has_an_english_explanation(self) -> None:
+        tooltip = absence_help_text(Language.EN)
+        for code, meaning in (
+            ("SL", "sick leave"),
+            ("V", "vacation"),
+            ("TO", "time off in lieu"),
+            ("CC", "child care leave"),
+        ):
+            assert f"{code} — {meaning}" in tooltip
+
     def test_the_colours_are_spelled_out(self, view: ScheduleGridView) -> None:
         """Nothing else on the screen says what red means."""
         written = " ".join(label.text() for label in view._legend_strip.findChildren(QLabel))

@@ -54,6 +54,8 @@ Accepted input formats include:
 
 Each employee can have at most one shift per day. A shift must end later than it starts and cannot cross midnight. Empty cells remove previously assigned shifts.
 
+For a non-working day, enter `ZCh` (sick leave), `U` (vacation), `WN` (time off for overtime), or `OD` (child care leave) in the same cell when using Polish. In English, the same entries appear as the short codes `SL`, `V`, `TO`, and `CC`. The full Polish or English description is accepted too. Hover over the `?` beside the codes to see their meanings in the interface language. The codes in printed schedules follow the chosen print language and do not add to working-hour totals. Replacing a shift with a code, or a code with a shift, updates that cell immediately.
+
 The editor calculates totals per employee and visually distinguishes closed days, public holidays, insufficient pharmacist coverage, and shifts extending beyond the pharmacy's opening hours.
 
 ## Opening Hours and Holidays

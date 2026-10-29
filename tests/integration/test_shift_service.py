@@ -36,6 +36,32 @@ def schedule(engine: Engine) -> ScheduleData:
 
 
 class TestWriting:
+    def test_absence_replaces_shift_and_survives_reopening(
+        self, shifts: ShiftService, schedule: ScheduleData, engine: Engine
+    ) -> None:
+        lane = schedule.lanes[0].id
+        day = date(2026, 8, 10)
+        shifts.set_shift(lane, day, time(10), time(15))
+        shifts.set_absence(lane, day, "ZCh")
+
+        reopened = ShiftService(create_session_factory(engine))
+        assert reopened.grid(schedule.id) == {}
+        assert reopened.absences(schedule.id) == {(lane, day): "ZCh"}
+        assert reopened.totals(schedule.id)[lane] == 0
+
+        reopened.set_shift(lane, day, time(8), time(16))
+        assert reopened.absences(schedule.id) == {}
+        assert reopened.grid(schedule.id)[lane, day] == (time(8), time(16))
+
+    def test_clearing_an_absence_removes_it(
+        self, shifts: ShiftService, schedule: ScheduleData
+    ) -> None:
+        lane = schedule.lanes[0].id
+        day = date(2026, 8, 10)
+        shifts.set_absence(lane, day, "OD")
+        shifts.clear_cell(lane, day)
+        assert shifts.absences(schedule.id) == {}
+
     def test_a_shift_can_be_written_into_a_cell(
         self, shifts: ShiftService, schedule: ScheduleData
     ) -> None:

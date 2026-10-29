@@ -23,11 +23,13 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QTableView,
+    QToolButton,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
 
-from work_scheduler.i18n import profession_name, t
+from work_scheduler.i18n import Language, profession_name, t, translate
 from work_scheduler.services import (
     EmployeeService,
     ScheduleData,
@@ -35,6 +37,7 @@ from work_scheduler.services import (
     ServiceError,
     ShiftService,
 )
+from work_scheduler.services.absence import ABSENCE_LABELS, display_absence, parse_absence
 from work_scheduler.services.audit import Audit, audit
 from work_scheduler.services.coverage import Uncovered, uncovered_days
 from work_scheduler.services.schedule_service import DayInfo
@@ -68,6 +71,13 @@ def trade_name(profession: object) -> str:
     return profession_name(profession)
 
 
+def absence_help_text(language: Language | None = None) -> str:
+    return "\n".join(
+        f"{display_absence(code, language)} — {translate(f'absence.{code}', language)}"
+        for code in ABSENCE_LABELS
+    )
+
+
 STATUS_LINGER_MS = 5000
 
 
@@ -91,6 +101,7 @@ class ScheduleGridModel(QAbstractTableModel):
         self._schedule = schedule
         self._timeline = schedule.timeline()
         self._cells = shifts.grid(schedule.id)
+        self._absences = shifts.absences(schedule.id)
         self._uncovered: dict[date, Uncovered] = {}
         self._recheck_coverage()
 
@@ -100,6 +111,7 @@ class ScheduleGridModel(QAbstractTableModel):
         self._schedule = schedule
         self._timeline = schedule.timeline()
         self._cells = self._shifts.grid(schedule.id)
+        self._absences = self._shifts.absences(schedule.id)
         self._recheck_coverage()
         self.endResetModel()
         self.totals_changed.emit()
@@ -115,6 +127,10 @@ class ScheduleGridModel(QAbstractTableModel):
     def cells(self) -> dict[tuple[int, date], tuple[time, time]]:
         """The grid as plain values, for the pre-closing check and the printout."""
         return dict(self._cells)
+
+    @property
+    def occupied_lanes(self) -> set[int]:
+        return {lane for lane, _ in self._cells} | {lane for lane, _ in self._absences}
 
     def day_at(self, row: int) -> DayInfo:
         return self._timeline[row]
@@ -165,9 +181,14 @@ class ScheduleGridModel(QAbstractTableModel):
 
         info = self._timeline[index.row()]
         hours = self._hours_at(index)
+        lane = self._schedule.lanes[index.column()].id
+        absence = self._absences.get((lane, info.day))
 
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
-            return format_range(*hours) if hours else ""
+            return format_range(*hours) if hours else display_absence(absence) if absence else ""
+
+        if role == Qt.ItemDataRole.ToolTipRole and absence:
+            return f"{display_absence(absence)} — {t(f'absence.{absence}')}"
 
         if role == Qt.ItemDataRole.BackgroundRole:
             # A breach of the opening hours belongs to one cell, so it wins there; a day
@@ -215,22 +236,31 @@ class ScheduleGridModel(QAbstractTableModel):
             return self._write(index, lane, day, None)
 
         hours = parse_range(text)
-        if hours is None:
-            self.rejected.emit(t("grid.unparsed", text=text))
-            return False
-        return self._write(index, lane, day, hours)
+        if hours is not None:
+            return self._write(index, lane, day, hours)
+        absence = parse_absence(text)
+        if absence is not None:
+            return self._write(index, lane, day, absence)
+        self.rejected.emit(t("grid.unparsed", text=text))
+        return False
 
     def _write(
-        self, index: QModelIndex, lane: int, day: date, hours: tuple[time, time] | None
+        self, index: QModelIndex, lane: int, day: date, entry: tuple[time, time] | str | None
     ) -> bool:
         """One edited cell, one transaction. Nothing is held back in memory."""
         try:
-            if hours is None:
-                fell_back = self._shifts.clear_shift(lane, day)
+            if entry is None:
+                fell_back = self._shifts.clear_cell(lane, day)
                 self._cells.pop((lane, day), None)
+                self._absences.pop((lane, day), None)
+            elif isinstance(entry, str):
+                fell_back = self._shifts.set_absence(lane, day, entry)
+                self._cells.pop((lane, day), None)
+                self._absences[lane, day] = entry
             else:
-                fell_back = self._shifts.set_shift(lane, day, *hours)
-                self._cells[lane, day] = hours
+                fell_back = self._shifts.set_shift(lane, day, *entry)
+                self._absences.pop((lane, day), None)
+                self._cells[lane, day] = entry
         except ServiceError as error:
             self.rejected.emit(str(error))
             return False
@@ -642,8 +672,36 @@ class ScheduleGridView(QWidget):
         hint = PlainLabel(t("grid.hint"))
         hint.setObjectName("mutedText")
         row.addWidget(hint)
+        self._absence_help = QToolButton(strip)
+        self._absence_help.setObjectName("absenceHelp")
+        self._absence_help.setText("?")
+        self._absence_help.setFixedSize(20, 20)
+        self._absence_help.setToolTip(absence_help_text())
+        self._absence_help.setAccessibleName(t("grid.absence_help"))
+        self._absence_help.setCursor(Qt.CursorShape.WhatsThisCursor)
+        self._absence_help.clicked.connect(
+            lambda: QToolTip.showText(
+                self._absence_help.mapToGlobal(QPoint(0, self._absence_help.height())),
+                self._absence_help.toolTip(),
+                self._absence_help,
+            )
+        )
+        self._style_absence_help()
+        row.addWidget(self._absence_help)
         self._legend_strip = strip
         return strip
+
+    def _style_absence_help(self) -> None:
+        palette = self._palette
+        self._absence_help.setStyleSheet(
+            "QToolButton {"
+            f"color: {palette.text_secondary};"
+            f"background: {palette.surface};"
+            f"border: 1px solid {palette.border_strong};"
+            "border-radius: 10px; font-weight: 700;"
+            "}"
+            f"QToolButton:hover {{ background: {palette.surface_active}; }}"
+        )
 
     def _legend_entry(self, colour: str, text: str) -> QHBoxLayout:
         swatch = PlainLabel()
@@ -720,6 +778,7 @@ class ScheduleGridView(QWidget):
         self._model.apply_palette(palette)
         self._lane_header.set_palette(palette)
         self._totals_bar.set_palette(palette)
+        self._style_absence_help()
         self._back.setIcon(self._back.icon())
         set_button_icon(self._finish, "check", palette.on_accent)
 
@@ -844,7 +903,7 @@ class ScheduleGridView(QWidget):
             return
 
         removed = [lane for lane in self._schedule.lanes if lane.employee_id not in employee_ids]
-        shifted_lanes = {lane_id for lane_id, _day in self._model.cells}
+        shifted_lanes = self._model.occupied_lanes
         destructive = [lane.name for lane in removed if lane.id in shifted_lanes]
         if destructive and not confirm_destructive(
             self,

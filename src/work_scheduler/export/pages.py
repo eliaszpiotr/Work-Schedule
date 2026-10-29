@@ -17,6 +17,7 @@ from work_scheduler.export.paint import (
     Sheet,
 )
 from work_scheduler.i18n import Language, month_name, month_short, translate, weekday_short
+from work_scheduler.services.absence import display_absence
 from work_scheduler.services.report import Person, ScheduleReport
 from work_scheduler.services.schedule_service import DayInfo
 from work_scheduler.services.time_text import format_hours, format_range
@@ -141,19 +142,30 @@ def draw_grid(sheet: Sheet, report: ScheduleReport, *, totals: bool) -> None:
             # A regular cell preserves exactly the same grid on holidays as on every
             # other day, in both print languages.
             label_column = (columns - 1) // 2
-            sheet.shrunk_text(
-                QRectF(date_width + label_column * column, y, column, row_height),
-                day.holiday,
-                sheet.font(min(body_size, 9.4)),
-                HOLIDAY_INK,
+            label_person = (
+                report.people[label_column] if label_column < len(report.people) else None
             )
-        elif not day.closed:
-            for index, person in enumerate(report.people):
-                hours = person.shifts.get(day.day)
-                if hours is None:
-                    continue
-                cell = QRectF(date_width + index * column, y, column, row_height)
-                sheet.shrunk_text(cell, format_range(*hours), sheet.font(body_size))
+            if label_person is None or (
+                day.day not in label_person.shifts and day.day not in label_person.absences
+            ):
+                sheet.shrunk_text(
+                    QRectF(date_width + label_column * column, y, column, row_height),
+                    day.holiday,
+                    sheet.font(min(body_size, 9.4)),
+                    HOLIDAY_INK,
+                )
+        for index, person in enumerate(report.people):
+            hours = person.shifts.get(day.day)
+            absence = person.absences.get(day.day)
+            if hours is None and absence is None:
+                continue
+            cell = QRectF(date_width + index * column, y, column, row_height)
+            value = (
+                format_range(*hours)
+                if hours is not None
+                else display_absence(absence, report.language)
+            )
+            sheet.shrunk_text(cell, value, sheet.font(body_size))
         y += row_height
         sheet.rule(y)
 
@@ -185,6 +197,15 @@ def draw_grid(sheet: Sheet, report: ScheduleReport, *, totals: bool) -> None:
         for upper, lower in spans:
             sheet.painter.drawLine(QPointF(x, upper), QPointF(x, lower))
 
+    if any(person.absences for person in report.people):
+        sheet.shrunk_text(
+            QRectF(0, sheet.height - 17, sheet.width, 15),
+            translate("absence.legend", report.language),
+            sheet.font(7.6),
+            MUTED,
+            LEFT,
+        )
+
 
 def draw_person(sheet: Sheet, report: ScheduleReport, person: Person) -> None:
     """One person's own sheet: a single run of weeks, whatever months it crosses.
@@ -201,7 +222,7 @@ def draw_person(sheet: Sheet, report: ScheduleReport, person: Person) -> None:
     weeks = (report.start_date.weekday() + len(report.days) + 6) // 7
     column = sheet.width / 7
     labels = 26
-    available = sheet.height - top - labels - TOTALS_BAR
+    available = sheet.height - top - labels - TOTALS_BAR - (18 if person.absences else 0)
     cell_height = min(available / max(weeks, 1), MAX_CELL_HEIGHT)
 
     # A filled band, not a second heavy rule: one already sits under the heading, and
@@ -240,6 +261,14 @@ def draw_person(sheet: Sheet, report: ScheduleReport, person: Person) -> None:
         INK,
         RIGHT,
     )
+    if person.absences:
+        sheet.shrunk_text(
+            QRectF(0, sheet.height - 17, sheet.width, 15),
+            translate("absence.legend", report.language),
+            sheet.font(7.6),
+            MUTED,
+            LEFT,
+        )
 
 
 def _calendar_cell(  # noqa: ANN001 - info is a DayInfo or nothing
@@ -276,6 +305,12 @@ def _calendar_cell(  # noqa: ANN001 - info is a DayInfo or nothing
             sheet.font(8.2),
             MUTED,
             RIGHT,
+        )
+    elif day in person.absences:
+        sheet.shrunk_text(
+            QRectF(rect.x() + 4, rect.y() + rect.height() * 0.34, rect.width() - 8, 18),
+            display_absence(person.absences[day], lang),
+            sheet.font(10, bold=True),
         )
     elif holiday:
         sheet.shrunk_text(
