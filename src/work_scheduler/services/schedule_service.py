@@ -1,17 +1,22 @@
 import logging
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field
 from datetime import date, time, timedelta
 
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from work_scheduler.database.base import utcnow
 from work_scheduler.database.models import (
+    Absence,
     Profession,
+    RuleSet,
     Schedule,
     ScheduleDayOverride,
     ScheduleEmployee,
     ScheduleOpeningHours,
     ScheduleStatus,
+    Shift,
 )
 from work_scheduler.database.repositories import ScheduleRepository
 from work_scheduler.database.session import session_scope
@@ -19,6 +24,7 @@ from work_scheduler.i18n import Language, t, weekday_short
 from work_scheduler.services.errors import ValidationError
 from work_scheduler.services.holidays import holiday_name
 from work_scheduler.services.opening_hours_service import DayHours, validate_week
+from work_scheduler.services.rule_sets import RuleSetData, RuleSetService, validate_rules
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +115,8 @@ class ScheduleData:
     lanes: list[Lane]
     week: list[DayHours]
     overrides: dict[date, tuple[time | None, time | None]]
+    rules: list[dict] = field(default_factory=list)
+    rule_set_name: str | None = None
 
     def days(self) -> list[date]:
         return days_between(self.start_date, self.end_date)
@@ -157,6 +165,9 @@ class ScheduleService:
                 for schedule, count in ScheduleRepository(session).list(status=status)
             ]
 
+    def available_rule_sets(self) -> list[RuleSetData]:
+        return RuleSetService(self._session_factory).list_sets()
+
     def create(
         self,
         name: str,
@@ -164,6 +175,7 @@ class ScheduleService:
         end_date: date,
         employee_ids: list[int],
         week: list[DayHours],
+        rule_set_id: int | None = None,
     ) -> ScheduleSummary:
         name = self._clean_name(name)
         self._check_period(start_date, end_date)
@@ -173,7 +185,16 @@ class ScheduleService:
             repository = ScheduleRepository(session)
             self._check_employees(repository, employee_ids)
 
-            schedule = Schedule(name=name, start_date=start_date, end_date=end_date)
+            source = session.get(RuleSet, rule_set_id) if rule_set_id is not None else None
+            if rule_set_id is not None and source is None:
+                raise ValidationError(t("rules.error.missing"))
+            schedule = Schedule(
+                name=name,
+                start_date=start_date,
+                end_date=end_date,
+                rule_set_name=source.name if source else None,
+                rules=validate_rules(source.rules) if source else [],
+            )
             # The order the user picked becomes the order of the columns.
             schedule.employees = [
                 ScheduleEmployee(employee_id=employee_id, display_order=order)
@@ -226,7 +247,25 @@ class ScheduleService:
                     override.day: (override.opens, override.closes)
                     for override in schedule.day_overrides
                 },
+                rules=deepcopy(schedule.rules or []),
+                rule_set_name=schedule.rule_set_name,
             )
+
+    def set_rule_set(self, schedule_id: int, rule_set_id: int | None) -> None:
+        """Copy current template rules into a schedule without linking future edits."""
+        with session_scope(self._session_factory) as session:
+            schedule = self._require(session, schedule_id)
+            source = session.get(RuleSet, rule_set_id) if rule_set_id is not None else None
+            if rule_set_id is not None and source is None:
+                raise ValidationError(t("rules.error.missing"))
+            rules = validate_rules(source.rules) if source else []
+            if schedule.rules == rules and schedule.rule_set_name == (
+                source.name if source else None
+            ):
+                return
+            reopen_if_final(schedule)
+            schedule.rules = rules
+            schedule.rule_set_name = source.name if source else None
 
     def override_day(
         self, schedule_id: int, day: date, opens: time | None, closes: time | None
@@ -290,6 +329,14 @@ class ScheduleService:
 
     def finalize(self, schedule_id: int) -> None:
         """Mark the schedule checked and ready to print. Editing it undoes this."""
+        from work_scheduler.services.audit import audit
+        from work_scheduler.services.shift_service import ShiftService
+
+        checked = audit(
+            self.open_schedule(schedule_id), ShiftService(self._session_factory).grid(schedule_id)
+        )
+        if any(finding.blocking_override is True for finding in checked.findings):
+            raise ValidationError(t("rules.error.blocked"))
         with session_scope(self._session_factory) as session:
             schedule = self._require(session, schedule_id)
             schedule.status = ScheduleStatus.FINAL
@@ -310,6 +357,91 @@ class ScheduleService:
         name = self._clean_name(name)
         with session_scope(self._session_factory) as session:
             self._require(session, schedule_id).name = name
+
+    def update_details(
+        self,
+        schedule_id: int,
+        name: str,
+        start_date: date,
+        end_date: date,
+        week: list[DayHours],
+    ) -> bool:
+        """Edit a schedule without silently discarding entries beyond a shorter period."""
+        name = self._clean_name(name)
+        self._check_period(start_date, end_date)
+        validate_week(week)
+        with session_scope(self._session_factory) as session:
+            schedule = self._require(session, schedule_id)
+            period_changed = (schedule.start_date, schedule.end_date) != (start_date, end_date)
+            if period_changed:
+                outside = self._first_outside_entry(session, schedule_id, start_date, end_date)
+                if outside is not None:
+                    raise ValidationError(
+                        t("schedule.error.period_has_entries", date=f"{outside:%d.%m.%Y}")
+                    )
+
+            current_hours = {row.weekday: row for row in schedule.opening_hours}
+            hours_changed = any(
+                day.weekday not in current_hours
+                or (current_hours[day.weekday].opens, current_hours[day.weekday].closes)
+                != (day.opens, day.closes)
+                for day in week
+            )
+            name_changed = schedule.name != name
+            if not (name_changed or period_changed or hours_changed):
+                return False
+
+            if period_changed or hours_changed:
+                reopen_if_final(schedule)
+            schedule.name = name
+            schedule.start_date = start_date
+            schedule.end_date = end_date
+            for day in week:
+                row = current_hours.get(day.weekday)
+                if row is None:
+                    schedule.opening_hours.append(
+                        ScheduleOpeningHours(
+                            weekday=day.weekday, opens=day.opens, closes=day.closes
+                        )
+                    )
+                else:
+                    row.opens, row.closes = day.opens, day.closes
+            logger.info("Schedule %s: details updated", schedule_id)
+            return True
+
+    @staticmethod
+    def _first_outside_entry(
+        session: Session, schedule_id: int, start_date: date, end_date: date
+    ) -> date | None:
+        def outside(column):  # noqa: ANN001, ANN202
+            return or_(column < start_date, column > end_date)
+
+        dates = [
+            session.scalar(
+                select(Shift.shift_date)
+                .join(ScheduleEmployee)
+                .where(ScheduleEmployee.schedule_id == schedule_id, outside(Shift.shift_date))
+                .order_by(Shift.shift_date)
+                .limit(1)
+            ),
+            session.scalar(
+                select(Absence.absence_date)
+                .join(ScheduleEmployee)
+                .where(ScheduleEmployee.schedule_id == schedule_id, outside(Absence.absence_date))
+                .order_by(Absence.absence_date)
+                .limit(1)
+            ),
+            session.scalar(
+                select(ScheduleDayOverride.day)
+                .where(
+                    ScheduleDayOverride.schedule_id == schedule_id,
+                    outside(ScheduleDayOverride.day),
+                )
+                .order_by(ScheduleDayOverride.day)
+                .limit(1)
+            ),
+        ]
+        return min((day for day in dates if day is not None), default=None)
 
     def delete(self, schedule_id: int) -> None:
         with session_scope(self._session_factory) as session:

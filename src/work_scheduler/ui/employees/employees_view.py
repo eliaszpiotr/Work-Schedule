@@ -273,7 +273,7 @@ class EmployeesView(QWidget):
     # Actions ----------------------------------------------------------------
 
     def add_employee(self) -> None:
-        dialog = EmployeeDialog(self)
+        dialog = EmployeeDialog(self, palette=self._palette)
         if dialog.exec() != EmployeeDialog.DialogCode.Accepted:
             return
 
@@ -286,7 +286,7 @@ class EmployeesView(QWidget):
         if employee is None:
             return
 
-        dialog = EmployeeDialog(self, employee)
+        dialog = EmployeeDialog(self, employee, self._palette)
         if dialog.exec() != EmployeeDialog.DialogCode.Accepted:
             return
 

@@ -89,6 +89,10 @@ TEXT: dict[str, object] = {
     "schedule.error.duplicate_person": "Ta sama osoba nie może być w grafiku dwa razy.",
     "schedule.error.person_missing": "Któraś z zaznaczonych osób już nie istnieje.",
     "schedule.error.day_outside_period": "Ten dzień jest poza okresem grafiku.",
+    "schedule.error.period_has_entries": (
+        "Nie można skrócić okresu: poza nowymi datami jest wpis z {date}. "
+        "Wybierz szerszy okres albo usuń ten wpis z grafiku."
+    ),
     "schedule.error.both_hours_or_closed": "Podaj obie godziny albo zostaw dzień zamknięty.",
     "schedule.error.close_after_open": "Godzina zamknięcia musi być późniejsza niż otwarcia.",
     # Shift service --------------------------------------------------------
@@ -104,6 +108,109 @@ TEXT: dict[str, object] = {
     "coverage.all_day": "cały dzień",
     "audit.empty_days": "Nikogo nie wpisano: {days}",
     "audit.no_pharmacist": "Brak magistra {day}: {hours}",
+    "audit.saturdays": "{name}, {month}: {actual} sobót; reguła: {comparison} {target}",
+    "audit.day_count": (
+        "{name}, {period}: {actual} zmian w dni {days}; reguła: {comparison} {target}"
+    ),
+    "audit.hours_count": "{name}, {period}: {actual} godz.; reguła: {comparison} {target}",
+    "audit.consecutive": "{name}, {first}–{last}: {actual} dni pracy z rzędu; maksimum {target}",
+    "audit.staffing": "{day}: potrzeba co najmniej {count} ({profession}) w godzinach {hours}",
+    "rules.title": "Zestawy reguł",
+    "rules.manage_heading": "Twoje zestawy reguł",
+    "rules.in_set": "Reguły w zestawie",
+    "rules.manage_hint": "Wybierz zestaw, aby zobaczyć reguły, albo utwórz nowy.",
+    "rules.empty": (
+        "Nie ma jeszcze zestawów reguł. Utwórz pierwszy, aby sprawdzać grafiki po swojemu."
+    ),
+    "rules.empty_rules": "Nie ma jeszcze reguł. Dodaj pierwszą poniżej.",
+    "rules.rule_count": {
+        "one": "{count} reguła",
+        "few": "{count} reguły",
+        "many": "{count} reguł",
+    },
+    "rules.settings_hint": (
+        "Twórz własne kontrole grafików. Wybierz zestaw przy tworzeniu grafiku; "
+        "każdy grafik zachowa własną kopię reguł."
+    ),
+    "rules.manage": "Zarządzaj zestawami reguł…",
+    "rules.add_set": "Nowy zestaw",
+    "rules.edit_set": "Edytuj zestaw reguł",
+    "rules.name": "Nazwa zestawu",
+    "rules.rules": "Reguły",
+    "rules.add_rule": "Dodaj regułę",
+    "rules.edit_rule": "Edytuj regułę",
+    "rules.done": "Gotowe",
+    "rules.delete": "Usunąć zestaw reguł?",
+    "rules.delete_confirm": "Usunąć „{name}”? Istniejące grafiki zachowają swoje kopie.",
+    "rules.rule_set": "Zestaw reguł",
+    "rules.none": "Bez własnych reguł",
+    "rules.picker_hint": "Wybierz kontrole obowiązujące w tym grafiku.",
+    "rules.apply": "Zastosuj",
+    "rules.kind": "Rodzaj reguły",
+    "rules.kind.saturdays": "Pracujące soboty w miesiącu",
+    "rules.kind.coverage": "Godziny obecności magistra",
+    "rules.kind.day_count": "Zmiany w wybrane dni tygodnia",
+    "rules.kind.hours": "Godziny pracy w okresie",
+    "rules.kind.consecutive": "Maksymalna liczba dni pracy z rzędu",
+    "rules.kind.staffing": "Minimalna obsada na zmianie",
+    "rules.severity": "Gdy niespełniona",
+    "rules.severity.warning": "Pokaż ostrzeżenie",
+    "rules.severity.block": "Blokuj zatwierdzenie",
+    "rules.comparison": "Cel",
+    "rules.comparison.min": "co najmniej",
+    "rules.comparison.exact": "dokładnie",
+    "rules.comparison.max": "co najwyżej",
+    "rules.count": "Liczba sobót",
+    "rules.day_count": "Liczba zmian",
+    "rules.hours_count": "Godziny",
+    "rules.max_days": "Maksimum dni z rzędu",
+    "rules.staff_count": "Osób na zmianie",
+    "rules.period": "Okres",
+    "rules.period.week": "tydzień kalendarzowy",
+    "rules.period.month": "miesiąc kalendarzowy",
+    "rules.profession": "Pracownicy",
+    "rules.profession.all": "Wszyscy pracownicy",
+    "rules.profession.pharmacist": "Magistrowie",
+    "rules.profession.technician": "Technicy",
+    "rules.person": "Osoba: {name}",
+    "rules.person_missing": "Osoba nr {id}",
+    "rules.weekdays": "Dni",
+    "rules.from_time": "Wymagaj od",
+    "rules.until_time": "Wymagaj do",
+    "rules.opening": "otwarcia",
+    "rules.closing": "zamknięcia",
+    "rules.coverage_hint": (
+        "Poza tymi godzinami obecność magistra nie jest sprawdzana. "
+        "W pozostałe dni obowiązuje kontrola przez całe godziny otwarcia."
+    ),
+    "rules.description.saturdays": "{profession}: {comparison} {count} soboty w miesiącu",
+    "rules.description.coverage": "Magister wymagany {days}, {start}–{end}",
+    "rules.description.day_count": (
+        "{profession}: {comparison} {count} zmian w dni {days} na {period}"
+    ),
+    "rules.description.hours": "{profession}: {comparison} {count} godz. na {period}",
+    "rules.description.consecutive": "{profession}: maksymalnie {count} dni pracy z rzędu",
+    "rules.description.staffing": "Co najmniej {count} ({profession}) w dni {days}, {start}–{end}",
+    "rules.complete_period_hint": (
+        "Sprawdzane są tylko pełne tygodnie lub miesiące kalendarzowe w grafiku."
+    ),
+    "rules.staffing_hint": "Wybierz dni i godziny. Bez godzin obowiązują godziny otwarcia apteki.",
+    "rules.error.invalid": (
+        "Niepoprawne ustawienia reguły albo nakładające się dni kontroli magistra."
+    ),
+    "rules.error.name": "Wpisz nazwę zestawu do 120 znaków.",
+    "rules.error.empty": "Dodaj przynajmniej jedną regułę do zestawu.",
+    "rules.error.duplicate": "Zestaw reguł o tej nazwie już istnieje.",
+    "rules.error.missing": "Ten zestaw reguł już nie istnieje.",
+    "rules.error.blocked": (
+        "Aby zatwierdzić grafik, trzeba spełnić własne reguły oznaczone jako blokujące."
+    ),
+    "rules.live_clean": "Własne reguły są spełnione.",
+    "rules.live_findings": {
+        "one": "Własne reguły: {count} uwaga. Pierwsza: {first}",
+        "few": "Własne reguły: {count} uwagi. Pierwsza: {first}",
+        "many": "Własne reguły: {count} uwag. Pierwsza: {first}",
+    },
     # Export ---------------------------------------------------------------
     "export.total_for_period": "Razem w okresie",
     "export.generated_on": "Wygenerowano {date}",
@@ -215,6 +322,16 @@ TEXT: dict[str, object] = {
     "grid.close_day": "Zamknij ten dzień",
     "grid.restore_default": "Przywróć domyślne",
     "grid.edit_team": "Edytuj zespół",
+    "grid.details.action": "Edytuj grafik",
+    "grid.details.title": "Dane grafiku",
+    "grid.details.hint": (
+        "Zmień nazwę, daty lub tygodniowe godziny otwarcia. "
+        "Wpisane zmiany i nieobecności zostaną zachowane."
+    ),
+    "grid.details.weekly_hours": "Tygodniowe godziny otwarcia",
+    "grid.details.show_hours": "Zmień godziny…",
+    "grid.details.hide_hours": "Ukryj godziny",
+    "grid.details.saved": "Dane grafiku zostały zapisane.",
     "grid.team.title": "Edytuj zespół grafiku",
     "grid.team.hint": (
         "Dodaj lub usuń osoby bez tworzenia grafiku od początku. Zmiany osób, które pozostaną "

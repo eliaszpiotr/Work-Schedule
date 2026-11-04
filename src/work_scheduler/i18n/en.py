@@ -88,6 +88,10 @@ TEXT: dict[str, object] = {
     "schedule.error.duplicate_person": "The same person cannot be in a schedule twice.",
     "schedule.error.person_missing": "One of the people you picked no longer exists.",
     "schedule.error.day_outside_period": "That day falls outside the schedule's period.",
+    "schedule.error.period_has_entries": (
+        "The period cannot be shortened: an entry on {date} would fall outside it. "
+        "Choose a wider period or remove that entry first."
+    ),
     "schedule.error.both_hours_or_closed": "Give both hours, or leave the day closed.",
     "schedule.error.close_after_open": "The closing time must be later than the opening time.",
     # Shift service --------------------------------------------------------
@@ -105,6 +109,105 @@ TEXT: dict[str, object] = {
     "coverage.all_day": "all day",
     "audit.empty_days": "Nobody put on: {days}",
     "audit.no_pharmacist": "No pharmacist on {day}: {hours}",
+    "audit.saturdays": "{name}, {month}: {actual} Saturdays; rule: {comparison} {target}",
+    "audit.day_count": "{name}, {period}: {actual} shifts on {days}; rule: {comparison} {target}",
+    "audit.hours_count": "{name}, {period}: {actual} hours; rule: {comparison} {target}",
+    "audit.consecutive": "{name}, {first}–{last}: {actual} consecutive workdays; maximum {target}",
+    "audit.staffing": "{day}: at least {count} {profession} needed during {hours}",
+    "rules.title": "Rule sets",
+    "rules.manage_heading": "Your rule sets",
+    "rules.in_set": "Rules in this set",
+    "rules.manage_hint": "Choose a set to see its rules or create a new one.",
+    "rules.empty": "No rule sets yet. Create one to check schedules your way.",
+    "rules.empty_rules": "No rules yet. Add the first rule below.",
+    "rules.rule_count": {
+        "one": "{count} rule",
+        "few": "{count} rules",
+        "many": "{count} rules",
+    },
+    "rules.settings_hint": (
+        "Create reusable checks for schedules. Choose a set when creating a schedule; "
+        "each schedule keeps its own copy."
+    ),
+    "rules.manage": "Manage rule sets…",
+    "rules.add_set": "New set",
+    "rules.edit_set": "Edit rule set",
+    "rules.name": "Set name",
+    "rules.rules": "Rules",
+    "rules.add_rule": "Add rule",
+    "rules.edit_rule": "Edit rule",
+    "rules.done": "Done",
+    "rules.delete": "Delete rule set?",
+    "rules.delete_confirm": "Delete “{name}”? Existing schedules keep their copies.",
+    "rules.rule_set": "Rule set",
+    "rules.none": "No custom rules",
+    "rules.picker_hint": "Choose which checks apply to this schedule.",
+    "rules.apply": "Apply",
+    "rules.kind": "Rule type",
+    "rules.kind.saturdays": "Working Saturdays per month",
+    "rules.kind.coverage": "Pharmacist coverage hours",
+    "rules.kind.day_count": "Shifts on selected weekdays",
+    "rules.kind.hours": "Working hours per period",
+    "rules.kind.consecutive": "Maximum consecutive workdays",
+    "rules.kind.staffing": "Minimum staff on duty",
+    "rules.severity": "If unmet",
+    "rules.severity.warning": "Show warning",
+    "rules.severity.block": "Block finalization",
+    "rules.comparison": "Target",
+    "rules.comparison.min": "at least",
+    "rules.comparison.exact": "exactly",
+    "rules.comparison.max": "at most",
+    "rules.count": "Number of Saturdays",
+    "rules.day_count": "Number of shifts",
+    "rules.hours_count": "Hours",
+    "rules.max_days": "Maximum days in a row",
+    "rules.staff_count": "People on duty",
+    "rules.period": "Period",
+    "rules.period.week": "calendar week",
+    "rules.period.month": "calendar month",
+    "rules.profession": "Employees",
+    "rules.profession.all": "All employees",
+    "rules.profession.pharmacist": "Pharmacists",
+    "rules.profession.technician": "Technicians",
+    "rules.person": "Person: {name}",
+    "rules.person_missing": "Person #{id}",
+    "rules.weekdays": "Days",
+    "rules.from_time": "Require from",
+    "rules.until_time": "Require until",
+    "rules.opening": "opening",
+    "rules.closing": "closing",
+    "rules.coverage_hint": (
+        "Outside these hours, pharmacist coverage is not checked. "
+        "Unselected days keep the standard full opening-hours check."
+    ),
+    "rules.description.saturdays": "{profession}: {comparison} {count} Saturdays per month",
+    "rules.description.coverage": "Pharmacist required {days}, {start}–{end}",
+    "rules.description.day_count": (
+        "{profession}: {comparison} {count} shifts on {days} per {period}"
+    ),
+    "rules.description.hours": "{profession}: {comparison} {count} hours per {period}",
+    "rules.description.consecutive": "{profession}: at most {count} consecutive workdays",
+    "rules.description.staffing": "At least {count} {profession} on {days}, {start}–{end}",
+    "rules.complete_period_hint": (
+        "Only complete calendar weeks or months within the schedule are checked."
+    ),
+    "rules.staffing_hint": (
+        "Choose days and hours. Empty time bounds use pharmacy opening and closing hours."
+    ),
+    "rules.error.invalid": "The rule settings are invalid or coverage days overlap.",
+    "rules.error.name": "Enter a set name of up to 120 characters.",
+    "rules.error.empty": "Add at least one rule to the set.",
+    "rules.error.duplicate": "A rule set with this name already exists.",
+    "rules.error.missing": "This rule set no longer exists.",
+    "rules.error.blocked": (
+        "Custom rules marked as blocking must be satisfied before this schedule can be finalized."
+    ),
+    "rules.live_clean": "Custom rules are satisfied.",
+    "rules.live_findings": {
+        "one": "Custom rules: {count} finding. First: {first}",
+        "few": "Custom rules: {count} findings. First: {first}",
+        "many": "Custom rules: {count} findings. First: {first}",
+    },
     # Export ---------------------------------------------------------------
     "export.total_for_period": "Total for the period",
     "export.generated_on": "Generated {date}",
@@ -217,6 +320,15 @@ TEXT: dict[str, object] = {
     "grid.close_day": "Close this day",
     "grid.restore_default": "Restore the default",
     "grid.edit_team": "Edit team",
+    "grid.details.action": "Edit schedule",
+    "grid.details.title": "Schedule details",
+    "grid.details.hint": (
+        "Change the name, dates or weekly opening hours. Saved shifts and absences are preserved."
+    ),
+    "grid.details.weekly_hours": "Weekly opening hours",
+    "grid.details.show_hours": "Change hours…",
+    "grid.details.hide_hours": "Hide hours",
+    "grid.details.saved": "Schedule details saved.",
     "grid.team.title": "Edit schedule team",
     "grid.team.hint": (
         "Add or remove people without rebuilding the schedule. Shifts belonging to people who "

@@ -281,6 +281,22 @@ def stylesheet(
     QToolButton:hover {{ background: {p.surface_hover}; }}
     QToolButton:pressed {{ background: {p.surface_active}; }}
     QToolButton:focus {{ border-color: {p.accent}; }}
+    QToolButton[ruleDay="true"] {{
+        background: {p.elevated};
+        border: 1px solid {p.border_strong};
+        color: {p.text_secondary};
+        font-weight: 500;
+    }}
+    QToolButton[ruleDay="true"]:hover {{
+        background: {p.surface_hover};
+        color: {p.text_primary};
+    }}
+    QToolButton[ruleDay="true"]:checked {{
+        background: {p.accent};
+        border-color: {p.accent};
+        color: {p.on_accent};
+    }}
+    QToolButton[ruleDay="true"]:focus {{ border-color: {p.accent_hover}; }}
 
     /* Inputs -------------------------------------------------------------- */
     QLineEdit, QComboBox, QDateEdit, QTimeEdit, QSpinBox {{

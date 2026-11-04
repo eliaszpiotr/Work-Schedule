@@ -195,7 +195,13 @@ class SchedulesView(QWidget):
             )
             return
 
-        dialog = ScheduleDialog(self, people, self._hours.week(), palette=self._palette)
+        dialog = ScheduleDialog(
+            self,
+            people,
+            self._hours.week(),
+            palette=self._palette,
+            rule_sets=self._schedules.available_rule_sets(),
+        )
         if dialog.exec() != ScheduleDialog.DialogCode.Accepted:
             return
 
@@ -206,6 +212,7 @@ class SchedulesView(QWidget):
                 dialog.end_date,
                 dialog.employee_ids,
                 dialog.week,
+                dialog.rule_set_id,
             )
         except ServiceError as error:
             QMessageBox.warning(self, t("common.failed"), str(error))

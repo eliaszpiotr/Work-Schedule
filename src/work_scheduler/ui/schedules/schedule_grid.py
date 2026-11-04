@@ -59,7 +59,12 @@ from work_scheduler.ui.components import (
 )
 from work_scheduler.ui.schedules.finalize_dialog import FinalizeDialog, Outcome
 from work_scheduler.ui.schedules.schedule_card import status_badge
-from work_scheduler.ui.schedules.schedule_edit_dialog import DayHoursDialog, ScheduleTeamDialog
+from work_scheduler.ui.schedules.schedule_edit_dialog import (
+    DayHoursDialog,
+    ScheduleDetailsDialog,
+    ScheduleTeamDialog,
+)
+from work_scheduler.ui.settings.rule_sets_dialog import RuleSetPickerDialog
 from work_scheduler.ui.theme import METRICS, Palette
 
 
@@ -548,8 +553,10 @@ class ScheduleGridView(QWidget):
         self._title = PlainLabel()
         self._status = PlainLabel()
         self._finish = primary_button(t("grid.finish"), "check", palette)
+        self._edit_details = secondary_button(t("grid.details.action"))
         self._edit_team = secondary_button(t("grid.edit_team"))
         self._edit_team.setEnabled(employees is not None)
+        self._edit_rules = secondary_button(t("rules.rule_set"))
 
         self._build()
 
@@ -570,6 +577,12 @@ class ScheduleGridView(QWidget):
         body.setContentsMargins(METRICS.space_6, METRICS.space_4, METRICS.space_6, METRICS.space_6)
         body.setSpacing(METRICS.space_3)
         body.addWidget(self._legend())
+        self._rules_status = PlainLabel()
+        self._rules_status.setObjectName("mutedText")
+        self._rules_status.setWordWrap(True)
+        body.addWidget(self._rules_status)
+        self._model.totals_changed.connect(self._refresh_rule_status)
+        self._refresh_rule_status()
 
         # One outer frame, with the scrollable days and the fixed totals bar inside it.
         card = self._card
@@ -630,12 +643,16 @@ class ScheduleGridView(QWidget):
         row.setContentsMargins(METRICS.space_4, 0, METRICS.space_6, 0)
         row.setSpacing(METRICS.space_3)
         self._finish.clicked.connect(self.finish_schedule)
+        self._edit_details.clicked.connect(self.edit_details)
         self._edit_team.clicked.connect(self.edit_team)
+        self._edit_rules.clicked.connect(self.change_rule_set)
 
         row.addWidget(self._back)
         row.addLayout(stack)
         row.addStretch()
+        row.addWidget(self._edit_details)
         row.addWidget(self._edit_team)
+        row.addWidget(self._edit_rules)
         row.addWidget(self._finish)
         return bar
 
@@ -648,6 +665,23 @@ class ScheduleGridView(QWidget):
         )
         if hasattr(self, "_badge"):
             self._badge.set_text(*status_badge(self._schedule.status))
+
+    def _refresh_rule_status(self) -> None:
+        if not self._model.schedule.rules:
+            self._rules_status.hide()
+            return
+        custom = [
+            finding
+            for finding in audit(self._model.schedule, self._model.cells).findings
+            if finding.blocking_override is not None
+        ]
+        if not custom:
+            self._rules_status.setText(t("rules.live_clean"))
+        else:
+            self._rules_status.setText(
+                t("rules.live_findings", count=len(custom), first=custom[0].text)
+            )
+        self._rules_status.show()
 
     def _legend(self) -> QWidget:
         """What the colours mean, spelled out.
@@ -821,6 +855,32 @@ class ScheduleGridView(QWidget):
         """What the pre-closing check finds right now. Public so tests can ask."""
         self.commit_open_editor()
         return audit(self._model.schedule, self._model.cells)
+
+    def change_rule_set(self) -> None:
+        """Apply a fresh snapshot from a reusable set, or clear custom rules."""
+        dialog = RuleSetPickerDialog(
+            self,
+            self._schedules.available_rule_sets(),
+            self._schedule.rule_set_name,
+            self._palette,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        try:
+            self._schedules.set_rule_set(self._schedule.id, dialog.rule_set_id)
+            self._schedule = self._schedules.open_schedule(self._schedule.id)
+            self._model.set_schedule(self._schedule)
+            self._refresh_heading()
+        except ServiceError as error:
+            self._complain(str(error))
+
+    def edit_details(self) -> None:
+        self.commit_open_editor()
+        dialog = ScheduleDetailsDialog(self, self._schedule, self._schedules, self._palette)
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.changed:
+            return
+        self._reload_schedule()
+        self._announce(t("grid.details.saved"), "success")
 
     def finish_schedule(self) -> None:
         dialog = FinalizeDialog(self, self.check(), self._palette)

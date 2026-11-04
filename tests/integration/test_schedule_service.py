@@ -258,6 +258,67 @@ class TestChangingTheTeam:
         assert [lane.employee_id for lane in service.open_schedule(schedule_id).lanes] == staff
 
 
+class TestEditingDetails:
+    def test_name_dates_and_weekly_hours_change_without_losing_entries(
+        self, engine: Engine, service: ScheduleService, staff: list[int]
+    ) -> None:
+        schedule_id = make(service, staff)
+        shifts = ShiftService(create_session_factory(engine))
+        lanes = service.open_schedule(schedule_id).lanes
+        shifts.set_shift(lanes[0].id, date(2026, 8, 12), time(9), time(17))
+        shifts.set_absence(lanes[1].id, date(2026, 8, 13), "U")
+        service.override_day(schedule_id, date(2026, 8, 15), time(9), time(14))
+        service.finalize(schedule_id)
+
+        week = [DayHours(day, time(7, 30), time(18)) for day in range(7)]
+        assert service.update_details(
+            schedule_id, "Nowy okres", date(2026, 8, 8), date(2026, 8, 25), week
+        )
+
+        changed = service.open_schedule(schedule_id)
+        assert (changed.name, changed.start_date, changed.end_date) == (
+            "Nowy okres",
+            date(2026, 8, 8),
+            date(2026, 8, 25),
+        )
+        assert changed.status is ScheduleStatus.DRAFT
+        assert changed.week[0].opens == time(7, 30)
+        assert changed.overrides[date(2026, 8, 15)] == (time(9), time(14))
+        assert shifts.grid(schedule_id) == {(lanes[0].id, date(2026, 8, 12)): (time(9), time(17))}
+        assert shifts.absences(schedule_id) == {(lanes[1].id, date(2026, 8, 13)): "U"}
+
+    @pytest.mark.parametrize("entry", ["shift", "absence", "override"])
+    def test_shortening_cannot_strand_saved_data(
+        self, entry: str, engine: Engine, service: ScheduleService, staff: list[int]
+    ) -> None:
+        schedule_id = make(service, staff)
+        shifts = ShiftService(create_session_factory(engine))
+        first_day = AUGUST[0]
+        lane = service.open_schedule(schedule_id).lanes[0].id
+        if entry == "shift":
+            shifts.set_shift(lane, first_day, time(8), time(16))
+        elif entry == "absence":
+            shifts.set_absence(lane, first_day, "U")
+        else:
+            service.override_day(schedule_id, first_day, None, None)
+
+        with pytest.raises(ValidationError, match="10.08.2026"):
+            service.update_details(
+                schedule_id, "Zmieniona nazwa", date(2026, 8, 11), AUGUST[1], OPEN_ALL_WEEK
+            )
+        unchanged = service.open_schedule(schedule_id)
+        assert unchanged.name == "Sierpień"
+        assert unchanged.start_date == first_day
+
+    def test_rename_only_keeps_final_status(
+        self, service: ScheduleService, staff: list[int]
+    ) -> None:
+        schedule_id = make(service, staff)
+        service.finalize(schedule_id)
+        assert service.update_details(schedule_id, "Poprawiona nazwa", *AUGUST, OPEN_ALL_WEEK)
+        assert service.open_schedule(schedule_id).status is ScheduleStatus.FINAL
+
+
 class TestListing:
     def test_schedules_are_listed_newest_period_first(
         self, service: ScheduleService, staff: list[int]

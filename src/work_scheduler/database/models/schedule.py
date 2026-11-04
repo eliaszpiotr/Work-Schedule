@@ -2,7 +2,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, Date, DateTime, Enum, String
+from sqlalchemy import JSON, CheckConstraint, Date, DateTime, Enum, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from work_scheduler.database.base import Base, TimestampMixin
@@ -34,6 +34,10 @@ class Schedule(Base, TimestampMixin):
         default=ScheduleStatus.DRAFT,
     )
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    rule_set_name: Mapped[str | None] = mapped_column(String(120), default=None)
+    rules: Mapped[list[dict]] = mapped_column(
+        JSON, nullable=False, default=list, server_default=text("'[]'")
+    )
 
     employees: Mapped[list["ScheduleEmployee"]] = relationship(
         back_populates="schedule",

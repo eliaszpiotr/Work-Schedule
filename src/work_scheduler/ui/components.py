@@ -3,11 +3,14 @@ from collections.abc import Callable
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QComboBox,
     QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QListView,
     QPushButton,
+    QStyleFactory,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -90,6 +93,39 @@ class PlainLabel(QLabel):
     def __init__(self, text: str = "") -> None:
         super().__init__(text)
         self.setTextFormat(Qt.TextFormat.PlainText)
+
+
+class StyledComboBox(QComboBox):
+    """Use the same inset menu and selection colours on macOS and other platforms."""
+
+    def __init__(self, palette: Palette, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        # The macOS style replaces a non-editable combo popup with a native menu.
+        # Fusion keeps the list view and its app colours visible everywhere.
+        self.setStyle(QStyleFactory.create("Fusion"))
+        view = QListView(self)
+        view.setSpacing(METRICS.space_1)
+        view.setUniformItemSizes(True)
+        self.setView(view)
+        self.setMaxVisibleItems(10)
+        view.setStyleSheet(f"""
+            QListView {{
+                background: {palette.elevated};
+                border: 1px solid {palette.border_strong};
+                padding: {METRICS.space_1}px;
+                outline: none;
+            }}
+            QListView::item {{
+                min-height: {METRICS.control_height}px;
+                padding: 0 {METRICS.space_3}px;
+                border-radius: {METRICS.radius_sm}px;
+                color: {palette.text_primary};
+            }}
+            QListView::item:hover, QListView::item:selected {{
+                background: {palette.surface_active};
+                color: {palette.text_primary};
+            }}
+        """)
 
 
 class Glyph(PlainLabel):

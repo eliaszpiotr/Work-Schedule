@@ -26,13 +26,14 @@ class Outcome(Enum):
 class FinalizeDialog(QDialog):
     """What the schedule looks like before it is closed, and the three ways out.
 
-    Nothing here refuses to close a schedule. Problems only change what the window
-    says first and which button the Enter key lands on.
+    A custom rule marked as blocking disables the finalization actions. Other findings
+    change the message and which button receives Enter.
     """
 
     def __init__(self, parent: QWidget | None, audit: Audit, palette: Palette) -> None:
         super().__init__(parent)
         self._audit = audit
+        self._rules_block = any(finding.blocking_override is True for finding in audit.findings)
         self._outcome = Outcome.CANCEL
 
         self.setWindowTitle(t("finalize.title"))
@@ -91,6 +92,8 @@ class FinalizeDialog(QDialog):
         return t("finalize.ready")
 
     def _summary(self) -> str:
+        if self._rules_block:
+            return t("rules.error.blocked")
         if self._audit.problems:
             return t("finalize.can_close_anyway")
         if self._audit.notes:
@@ -135,6 +138,8 @@ class FinalizeDialog(QDialog):
         save.clicked.connect(lambda: self._finish(Outcome.CLOSE_AND_SAVE))
         close.clicked.connect(lambda: self._finish(Outcome.CLOSE))
         cancel.clicked.connect(self.reject)
+        save.setEnabled(not self._rules_block)
+        close.setEnabled(not self._rules_block)
 
         # With problems on the list, Enter must not close the schedule by accident.
         (cancel if self._audit.problems else save).setDefault(True)

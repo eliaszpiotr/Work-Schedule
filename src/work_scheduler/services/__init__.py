@@ -7,6 +7,7 @@ from work_scheduler.services.opening_hours_service import (
     OpeningHoursService,
 )
 from work_scheduler.services.report import ScheduleReport, build_report
+from work_scheduler.services.rule_sets import RuleSetData, RuleSetService
 from work_scheduler.services.schedule_service import (
     Lane,
     ScheduleData,
@@ -27,6 +28,8 @@ __all__ = [
     "Kind",
     "ScheduleData",
     "ScheduleReport",
+    "RuleSetData",
+    "RuleSetService",
     "ScheduleService",
     "ScheduleSummary",
     "ServiceError",

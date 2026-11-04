@@ -99,14 +99,14 @@ def test_all_main_screens_remain_usable_at_minimum_window_size(
         assert grid._totals_bar.geometry().top() >= grid._table.geometry().bottom()
         help_button = grid._absence_help
         assert help_button.mapTo(grid, QPoint(help_button.width(), 0)).x() <= grid.width()
+        assert grid._edit_rules.mapTo(grid, QPoint(grid._edit_rules.width(), 0)).x() <= grid.width()
+        assert grid._finish.mapTo(grid, QPoint(grid._finish.width(), 0)).x() <= grid.width()
 
         window.resize(1180, 900)
         window._navigation.setCurrentRow(2)
         QApplication.processEvents()
-        assert (
-            settings_page.findChild(QScrollArea, "settingsScroll").verticalScrollBar().maximum()
-            == 0
-        )
+        assert editor.height() >= editor.sizeHint().height()
+        assert scroller.horizontalScrollBar().maximum() == 0
     finally:
         window.close()
         set_language(previous_language)

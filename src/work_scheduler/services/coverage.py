@@ -51,6 +51,7 @@ class Uncovered:
     day: date
     intervals: list[Interval]
     whole_day: bool
+    blocking: bool | None = None
 
     @property
     def hours(self) -> str:
@@ -88,16 +89,34 @@ def uncovered_days(
             continue
 
         on_duty = [(lane, hours) for (lane, day), hours in cells.items() if day == info.day]
-        if not on_duty:
-            continue
-
-        missing = gaps(
-            info.opens, info.closes, [hours for lane, hours in on_duty if lane in pharmacists]
+        requirement = next(
+            (
+                rule
+                for rule in (schedule.rules or [])
+                if rule["kind"] == "coverage" and info.day.weekday() in rule["weekdays"]
+            ),
+            None,
         )
+        if not on_duty and requirement is None:
+            continue
+        opens = (
+            max(info.opens, time.fromisoformat(requirement["start"]))
+            if requirement and requirement["start"]
+            else info.opens
+        )
+        closes = (
+            min(info.closes, time.fromisoformat(requirement["end"]))
+            if requirement and requirement["end"]
+            else info.closes
+        )
+        if opens >= closes:
+            continue
+        missing = gaps(opens, closes, [hours for lane, hours in on_duty if lane in pharmacists])
         if missing:
             problems[info.day] = Uncovered(
                 day=info.day,
                 intervals=missing,
                 whole_day=missing == [(info.opens, info.closes)],
+                blocking=requirement["severity"] == "block" if requirement else None,
             )
     return problems

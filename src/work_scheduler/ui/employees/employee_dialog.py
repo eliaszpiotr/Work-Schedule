@@ -1,7 +1,6 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QHBoxLayout,
     QLineEdit,
@@ -13,14 +12,20 @@ from work_scheduler.database.models import Employee, Profession
 from work_scheduler.i18n import profession_label, t
 from work_scheduler.ui.components import (
     PlainLabel,
+    StyledComboBox,
     primary_button,
     secondary_button,
 )
-from work_scheduler.ui.theme import METRICS
+from work_scheduler.ui.theme import LIGHT, METRICS, Palette
 
 
 class EmployeeDialog(QDialog):
-    def __init__(self, parent: QWidget | None = None, employee: Employee | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        employee: Employee | None = None,
+        palette: Palette = LIGHT,
+    ) -> None:
         super().__init__(parent)
         self._employee = employee
 
@@ -30,7 +35,7 @@ class EmployeeDialog(QDialog):
 
         self._first_name = QLineEdit()
         self._last_name = QLineEdit()
-        self._profession = QComboBox()
+        self._profession = StyledComboBox(palette)
         self._active = QCheckBox(t("employee.field.active"))
 
         for profession in Profession:

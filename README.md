@@ -26,8 +26,10 @@ The application runs entirely on the user's computer. It requires no account, re
 
 - Manage pharmacists and pharmacy technicians while preserving inactive employees in historical schedules.
 - Create schedules in a day-by-person grid with direct keyboard entry and automatic hour totals.
+- Edit an existing schedule's name, date range, team, and weekly opening hours.
 - Apply weekly opening hours, Polish public holidays, and manual exceptions for individual dates.
 - Detect empty working days, missing pharmacist coverage, shifts outside opening hours, and employees without assigned work.
+- Create reusable rule sets for Saturday assignments and pharmacist coverage hours, with warning or blocking behavior per rule.
 - Finalize reviewed schedules and produce consistent PDF or physical printouts for the pharmacy and individual employees.
 
 ## Application Workflow
@@ -43,6 +45,8 @@ Every edit is saved immediately in its own database transaction. If an operation
 
 The schedule grid uses days as rows and employees as columns. Each cell represents one employee's shift on one calendar date.
 
+Use **Edit schedule** in the grid toolbar to change its name, period, or weekly opening hours. Shortening the period is refused if it would leave any saved shift, absence, or day override outside the new dates. Changing the period or opening hours returns a finalized schedule to draft for another review; changing only its name keeps its status.
+
 Accepted input formats include:
 
 ```text
@@ -57,6 +61,23 @@ Each employee can have at most one shift per day. A shift must end later than it
 For a non-working day, enter `ZCh` (sick leave), `U` (vacation), `WN` (time off for overtime), or `OD` (child care leave) in the same cell when using Polish. In English, the same entries appear as the short codes `SL`, `V`, `TO`, and `CC`. The full Polish or English description is accepted too. Hover over the `?` beside the codes to see their meanings in the interface language. The codes in printed schedules follow the chosen print language and do not add to working-hour totals. Replacing a shift with a code, or a code with a shift, updates that cell immediately.
 
 The editor calculates totals per employee and visually distinguishes closed days, public holidays, insufficient pharmacist coverage, and shifts extending beyond the pharmacy's opening hours.
+
+## Custom Rule Sets
+
+In **Settings → Rule sets**, create a named set and add one or more rules. A schedule can select a set when it is created or from the **Rule set** button in its editor. Rules are copied into the schedule, so editing or deleting a reusable set does not change existing schedules.
+
+Available rule types:
+
+- **Working Saturdays per month:** require at least, exactly, or at most a chosen number of Saturday shifts for all employees, pharmacists, or technicians. The check applies to complete calendar months contained in the schedule period.
+- **Pharmacist coverage hours:** for selected weekdays, require a pharmacist only between chosen hours. Leaving the start or end unset uses the pharmacy's opening or closing time. Other weekdays keep the standard full opening-hours check.
+- **Shifts on selected weekdays:** set a minimum, exact, or maximum number of shifts on any chosen weekdays per complete calendar week or month, for all employees or a selected profession.
+- **Working hours:** set a minimum, exact, or maximum number of hours per complete calendar week or month for each employee in the chosen profession.
+- **Consecutive workdays:** limit how many days in a row each selected employee may work.
+- **Minimum staff on duty:** require a chosen number of employees, pharmacists, or technicians during selected weekdays and hours. Unset time bounds use opening hours.
+
+Per-person rules can target everyone, one profession, or one named employee. Each rule independently chooses whether an unmet condition is a warning or blocks finalization.
+
+The finalization check lists the affected employees or days. Blocking rules are also enforced by the schedule service, so they cannot be bypassed by calling it directly.
 
 ## Opening Hours and Holidays
 
@@ -79,7 +100,7 @@ Before a schedule is finalized, Work Scheduler checks for:
 - shifts outside the configured opening hours,
 - employees without any assigned shifts.
 
-An open day with no assigned employees blocks finalization. Other findings are presented as warnings so the person preparing the schedule can make the final operational decision.
+An open day with no assigned employees is highlighted as unfinished. Built-in findings can be reviewed and finalized by the person preparing the schedule. Custom rules marked as blocking must be satisfied before finalization; rules marked as warnings can be accepted.
 
 Finalized schedules are marked as reviewed and become available for PDF export and printing. Editing a finalized schedule automatically returns it to draft status, ensuring that the stored status always reflects whether the latest version has been checked.
 

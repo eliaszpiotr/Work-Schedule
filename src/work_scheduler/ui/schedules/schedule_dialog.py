@@ -19,9 +19,11 @@ from work_scheduler.database.models import Employee
 from work_scheduler.i18n import Language, current_language, profession_name, t, translate
 from work_scheduler.services import DayHours
 from work_scheduler.services.holidays import holidays_in, holidays_within
+from work_scheduler.services.rule_sets import RuleSetData
 from work_scheduler.services.schedule_service import MAX_PERIOD_DAYS
 from work_scheduler.ui.components import (
     PlainLabel,
+    StyledComboBox,
     primary_button,
     restyle,
     secondary_button,
@@ -93,6 +95,7 @@ class ScheduleDialog(QDialog):
         week: list[DayHours],
         today: date | None = None,
         palette: Palette = LIGHT,
+        rule_sets: list[RuleSetData] | None = None,
     ) -> None:
         super().__init__(parent)
         today = today or date.today()
@@ -111,6 +114,10 @@ class ScheduleDialog(QDialog):
         self._people = QListWidget()
         self._hours = OpeningHoursEditor(week)
         self._hours_summary = PlainLabel()
+        self._rule_set = StyledComboBox(palette)
+        self._rule_set.addItem(t("rules.none"), None)
+        for item in rule_sets or []:
+            self._rule_set.addItem(item.name, item.id)
         self._customise = secondary_button(t("wizard.customise"))
         self._folded_height = 0
         self._summary = PlainLabel()
@@ -131,6 +138,7 @@ class ScheduleDialog(QDialog):
         layout.addLayout(self._period_row())
         layout.addLayout(self._field(t("wizard.who_works"), self._people))
         layout.addLayout(self._hours_row())
+        layout.addLayout(self._field(t("rules.rule_set"), self._rule_set))
 
         self._summary.setObjectName("mutedText")
         # Two sentences in Polish, and longer still in English. Without wrapping the
@@ -277,6 +285,10 @@ class ScheduleDialog(QDialog):
     @property
     def week(self) -> list[DayHours]:
         return self._hours.week()
+
+    @property
+    def rule_set_id(self) -> int | None:
+        return self._rule_set.currentData()
 
     def _claim_name(self, text: str) -> None:
         """Only typing counts. ``setText`` fires textChanged, never textEdited."""

@@ -2,7 +2,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFormLayout, QFrame, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 
 from work_scheduler.i18n import Language, t
-from work_scheduler.services import OpeningHoursService, ServiceError
+from work_scheduler.services import OpeningHoursService, RuleSetService, ServiceError
 from work_scheduler.settings import PrintLanguage, Settings, ThemeMode
 from work_scheduler.ui.components import (
     Card,
@@ -11,8 +11,10 @@ from work_scheduler.ui.components import (
     SegmentedControl,
     primary_button,
     restyle,
+    secondary_button,
 )
 from work_scheduler.ui.settings.opening_hours_editor import OpeningHoursEditor
+from work_scheduler.ui.settings.rule_sets_dialog import RuleSetsDialog
 from work_scheduler.ui.theme import METRICS, Palette
 
 # A week of time fields does not get wider by being given the whole window.
@@ -28,12 +30,14 @@ class SettingsView(QWidget):
         service: OpeningHoursService,
         palette: Palette,
         settings: Settings | None = None,
+        rule_sets: RuleSetService | None = None,
     ) -> None:
         super().__init__()
         self.setObjectName("workspace")
         self._service = service
         self._palette = palette
         self._settings = settings if settings is not None else Settings()
+        self._rule_sets = rule_sets
 
         self._editor = OpeningHoursEditor(service.week())
         self._save = primary_button(t("common.save"))
@@ -89,9 +93,12 @@ class SettingsView(QWidget):
         body.setContentsMargins(METRICS.space_6, METRICS.space_5, METRICS.space_6, METRICS.space_6)
         body.setSpacing(METRICS.space_3)
         body.addWidget(self._appearance_card())
+        if self._rule_sets is not None:
+            body.addWidget(self._rule_sets_card())
         body.addWidget(card)
         body.addWidget(self._status)
         body.addStretch()
+        panel.setMinimumHeight(body.sizeHint().height())
 
         # At the window's minimum height the two cards need more room than the page.
         # Scroll the content instead of squeezing the seven time fields over one another.
@@ -140,6 +147,21 @@ class SettingsView(QWidget):
         card.body().addWidget(hint)
         card.body().addSpacing(METRICS.space_2)
         card.body().addLayout(form)
+        card.setMaximumWidth(SETTINGS_CARD_WIDTH)
+        return card
+
+    def _rule_sets_card(self) -> Card:
+        card = Card()
+        title = PlainLabel(t("rules.title"))
+        title.setObjectName("sectionTitle")
+        hint = PlainLabel(t("rules.settings_hint"))
+        hint.setObjectName("mutedText")
+        hint.setWordWrap(True)
+        button = secondary_button(t("rules.manage"))
+        button.clicked.connect(lambda: RuleSetsDialog(self, self._rule_sets, self._palette).exec())
+        card.body().addWidget(title)
+        card.body().addWidget(hint)
+        card.body().addWidget(button)
         card.setMaximumWidth(SETTINGS_CARD_WIDTH)
         return card
 

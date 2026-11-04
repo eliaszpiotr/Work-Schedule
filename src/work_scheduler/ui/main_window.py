@@ -18,6 +18,7 @@ from work_scheduler.i18n import Language, set_language, t
 from work_scheduler.services import (
     EmployeeService,
     OpeningHoursService,
+    RuleSetService,
     ScheduleService,
     ShiftService,
 )
@@ -76,7 +77,9 @@ class MainWindow(QMainWindow):
             palette,
         )
         self._employees = EmployeesView(EmployeeService(factory), palette)
-        self._settings_view = SettingsView(OpeningHoursService(factory), palette, self._settings)
+        self._settings_view = SettingsView(
+            OpeningHoursService(factory), palette, self._settings, RuleSetService(factory)
+        )
         self._settings_view.language_changed.connect(self.set_language)
         self._settings_view.theme_changed.connect(self.set_theme)
 
