@@ -1,3 +1,4 @@
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -6,9 +7,6 @@ from PySide6.QtGui import QFontDatabase, QGuiApplication
 
 from work_scheduler.settings import ThemeMode
 from work_scheduler.ui.icons import icon_file
-from work_scheduler.ui.resources import FONT_FILE
-
-FALLBACK_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,57 +33,92 @@ class Palette:
     danger_surface: str
     danger: str
     danger_hover: str
+    work_surface: str
+    work_ink: str
+    leave_surface: str
+    leave_ink: str
+    sick_surface: str
+    sick_ink: str
+    overtime_surface: str
+    overtime_ink: str
+    care_surface: str
+    care_ink: str
+    sidebar_surface: str
+    sidebar_border: str
 
 
 LIGHT = Palette(
-    background="#FFFFFF",
-    surface="#F7F7F6",
+    background="#EEF0F5",
+    surface="#F5F5F7",
     elevated="#FFFFFF",
-    surface_hover="#F2F2F0",
-    surface_active="#ECECEA",
-    text_primary="#1F1F1F",
-    text_secondary="#666666",
-    text_muted="#8A8A8A",
-    border="#E5E5E3",
-    border_strong="#D5D5D2",
-    accent="#1F1F1F",
-    accent_hover="#383838",
+    surface_hover="#F0F0F3",
+    surface_active="#E8E8ED",
+    text_primary="#1D1D1F",
+    text_secondary="#6E6E73",
+    text_muted="#8E8E93",
+    border="#E5E5EA",
+    border_strong="#D1D1D6",
+    accent="#007AFF",
+    accent_hover="#0066D6",
     on_accent="#FFFFFF",
-    success="#3F8F5B",
-    warning="#B07B24",
-    warning_surface="#FBF1DA",
-    success_surface="#E9F3EC",
-    holiday_surface="#E4EEFA",
-    holiday_ink="#3F6295",
-    danger_surface="#FBE7E5",
-    danger="#C2453C",
-    danger_hover="#A93A32",
+    success="#248A3D",
+    success_surface="#E3F6E8",
+    warning="#B25000",
+    warning_surface="#FFF4E0",
+    danger="#D70015",
+    danger_hover="#B80012",
+    danger_surface="#FDE8E7",
+    holiday_surface="#F3EEFE",
+    holiday_ink="#6B3FC4",
+    work_surface="#E5F0FF",
+    work_ink="#0A5BC4",
+    leave_surface="#E3F6E8",
+    leave_ink="#1E7A3A",
+    sick_surface="#FDE8E7",
+    sick_ink="#B3261E",
+    overtime_surface="#EFE9FD",
+    overtime_ink="#5E35B1",
+    care_surface="#DFF5F5",
+    care_ink="#0B6E74",
+    sidebar_surface="rgba(255,255,255,0.72)",
+    sidebar_border="#FFFFFF",
 )
 
 DARK = Palette(
-    background="#1E1E1E",
-    surface="#252525",
-    elevated="#2A2A2A",
-    surface_hover="#303030",
-    surface_active="#353535",
-    text_primary="#ECECEC",
-    text_secondary="#A8A8A8",
-    text_muted="#777777",
-    border="#343434",
-    border_strong="#454545",
-    # Black would vanish on a dark background, so the primary action inverts instead.
-    accent="#ECECEC",
-    accent_hover="#FFFFFF",
-    on_accent="#1E1E1E",
-    success="#68B183",
-    warning="#D3A353",
-    warning_surface="#3B3018",
-    success_surface="#1F3327",
-    holiday_surface="#1F2E42",
-    holiday_ink="#7FA3D4",
-    danger_surface="#3E2422",
-    danger="#E0736B",
-    danger_hover="#E88880",
+    background="#1C1C1E",
+    surface="#242426",
+    elevated="#2C2C2E",
+    surface_hover="#3A3A3C",
+    surface_active="#48484A",
+    text_primary="#F5F5F7",
+    text_secondary="#AEAEB2",
+    text_muted="#8E8E93",
+    border="#3A3A3C",
+    border_strong="#48484A",
+    accent="#0A84FF",
+    accent_hover="#409CFF",
+    on_accent="#FFFFFF",
+    success="#30D158",
+    success_surface="#123D22",
+    warning="#FF9F0A",
+    warning_surface="#3A2D12",
+    danger="#FF453A",
+    danger_hover="#FF6961",
+    danger_surface="#4A1714",
+    holiday_surface="#2E2346",
+    holiday_ink="#C3A6FF",
+    work_surface="#0D2C52",
+    work_ink="#8CC2FF",
+    leave_surface="#123D22",
+    leave_ink="#7FD99A",
+    sick_surface="#4A1714",
+    sick_ink="#FF9B94",
+    overtime_surface="#2A2550",
+    overtime_ink="#B4A8FF",
+    care_surface="#0F3638",
+    care_ink="#7FDCDF",
+    sidebar_surface="rgba(58,58,60,0.60)",
+    sidebar_border="#3A3A3C",
 )
 
 
@@ -101,15 +134,20 @@ class Metrics:
 
     radius_sm: int = 6
     radius_md: int = 8
-    radius_lg: int = 12
+    radius_lg: int = 16
+    pill_radius: int = 7
+    nav_radius: int = 10
 
-    font_page_title: int = 20
+    font_page_title: int = 22
     font_section: int = 16
-    font_body: int = 14
+    font_body: int = 13
     font_secondary: int = 13
     font_metadata: int = 12
 
     badge_height: int = 22
+    window_inset: int = 8
+    pill_inset: int = 3
+    pill_height: int = 22
     avatar_size: int = 32
     card_padding: int = 18
     segment_height: int = 28
@@ -137,15 +175,28 @@ class Metrics:
 
 METRICS = Metrics()
 
+_PILL_FIELDS = {
+    "work": ("work_surface", "work_ink"),
+    "U": ("leave_surface", "leave_ink"),
+    "ZCh": ("sick_surface", "sick_ink"),
+    "WN": ("overtime_surface", "overtime_ink"),
+    "OD": ("care_surface", "care_ink"),
+}
 
-def load_font_family() -> str:
-    """Inter ships with the application so it looks the same on every machine."""
-    if not FONT_FILE.is_file():
-        return FALLBACK_FONT
 
-    font_id = QFontDatabase.addApplicationFont(str(FONT_FILE))
-    families = QFontDatabase.applicationFontFamilies(font_id)
-    return families[0] if families else FALLBACK_FONT
+def pill_colours(kind: str | None, palette: Palette) -> tuple[str, str] | None:
+    if kind is None:
+        return None
+    surface, ink = _PILL_FIELDS[kind]
+    return getattr(palette, surface), getattr(palette, ink)
+
+
+def ui_font_family() -> str:
+    """The platform's own interface font, so the app looks native."""
+    if sys.platform == "darwin":
+        return ".AppleSystemUIFont"
+    family = QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont).family()
+    return family or "Segoe UI"
 
 
 def stylesheet(
@@ -167,9 +218,9 @@ def stylesheet(
     QWidget#window, QWidget#workspace {{ background: {p.background}; }}
     /* Sidebar ------------------------------------------------------------- */
     QFrame#sidebar {{
-        background: {p.surface};
-        border: none;
-        border-right: 1px solid {p.border};
+        background: {p.sidebar_surface};
+        border: 1px solid {p.sidebar_border};
+        border-radius: {m.radius_lg}px;
     }}
     QLabel#brand {{
         font-size: {m.font_section}px;
@@ -187,32 +238,17 @@ def stylesheet(
         border: none;
         outline: none;
     }}
-    QListWidget#navigation::item {{
-        min-height: {m.nav_item_height}px;
-        border-radius: {m.radius_sm}px;
-        padding: 0 {m.space_3}px;
-        color: {p.text_secondary};
-    }}
-    QListWidget#navigation::item:hover {{
-        background: {p.surface_hover};
-        color: {p.text_primary};
-    }}
-    QListWidget#navigation[collapsed="true"]::item {{ padding: 0; }}
-    QListWidget#navigation::item:selected {{
-        background: {p.surface_active};
-        color: {p.text_primary};
-        font-weight: 500;
-    }}
+    /* The entries themselves are painted by NavDelegate: Qt's item drawing pins the
+       icon to the left edge, which put the collapsed icons off the panel's axis. */
 
     /* Toolbar and headings ------------------------------------------------ */
     QFrame#toolbar {{
-        background: {p.background};
+        background: transparent;
         border: none;
-        border-bottom: 1px solid {p.border};
     }}
     QLabel#pageTitle {{
         font-size: {m.font_page_title}px;
-        font-weight: 600;
+        font-weight: 700;
     }}
     QLabel#secondaryText {{
         font-size: {m.font_secondary}px;
@@ -233,10 +269,10 @@ def stylesheet(
     /* Buttons ------------------------------------------------------------- */
     QPushButton {{
         min-height: {m.control_height}px;
-        border-radius: {m.radius_sm}px;
-        padding: 0 {m.space_3}px;
+        border-radius: {m.control_height // 2}px;
+        padding: 0 14px;
         background: {p.elevated};
-        border: 1px solid {p.border_strong};
+        border: 1px solid {p.border};
         color: {p.text_primary};
         font-size: {m.font_secondary}px;
         font-weight: 500;
@@ -278,6 +314,17 @@ def stylesheet(
         border: 1px solid transparent;
         border-radius: {m.radius_sm}px;
     }}
+    QToolButton[variant="roundPrimary"] {{
+        min-width: 28px;
+        max-width: 28px;
+        min-height: 28px;
+        max-height: 28px;
+        border-radius: 14px;
+        background: {p.accent};
+        border: none;
+    }}
+    QToolButton[variant="roundPrimary"]:hover {{ background: {p.accent_hover}; }}
+    QToolButton[variant="roundPrimary"]:pressed {{ background: {p.accent_hover}; }}
     QToolButton:hover {{ background: {p.surface_hover}; }}
     QToolButton:pressed {{ background: {p.surface_active}; }}
     QToolButton:focus {{ border-color: {p.accent}; }}
@@ -303,10 +350,14 @@ def stylesheet(
         min-height: {m.control_height}px;
         background: {p.elevated};
         border: 1px solid {p.border_strong};
-        border-radius: {m.radius_sm}px;
+        border-radius: 8px;
         padding: 0 {m.space_3}px;
         selection-background-color: {p.accent};
         selection-color: {p.on_accent};
+    }}
+    QLineEdit[capsule="true"] {{
+        border-radius: {m.control_height // 2}px;
+        padding-left: 12px;
     }}
     QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QTimeEdit:focus, QSpinBox:focus {{
         border-color: {p.accent};
@@ -345,6 +396,14 @@ def stylesheet(
         font-weight: 500;
     }}
     QCheckBox {{ spacing: {m.space_2}px; }}
+    /* Switch paints itself; the sheet only hands it the colours. */
+    QCheckBox[role="switch"] {{
+        qproperty-onColor: {p.accent};
+        qproperty-offColor: {p.surface_active};
+        qproperty-knobColor: #FFFFFF;
+    }}
+    QFrame#settingsRow {{ background: transparent; border: none; }}
+    QFrame#rowDivider {{ background: {p.border}; border: none; }}
     /* QListWidget items carry their own indicator, which QCheckBox rules do not reach. */
     QCheckBox::indicator, QListView::indicator {{
         width: 16px;
@@ -364,10 +423,10 @@ def stylesheet(
        would also hit the table inside QCalendarWidget, take over its drawing and
        silently drop the colours the calendar sets on individual dates. */
     QTableView[data="true"] {{
-        background: {p.background};
-        alternate-background-color: {p.background};
-        border: 1px solid {p.border};
-        border-radius: {m.radius_md}px;
+        background: {p.elevated};
+        alternate-background-color: {p.elevated};
+        border: none;
+        border-radius: {m.radius_lg}px;
         gridline-color: transparent;
         outline: none;
         selection-background-color: {p.surface_active};
@@ -397,10 +456,10 @@ def stylesheet(
         background: transparent;
     }}
     QTableView[role="grid"]::item:selected {{ background: transparent; }}
-    /* The editor sits exactly in the cell: square, flush, no frame of its own. */
+    /* The editor sits over the pill, rounded like the cursor ring it replaces. */
     QTableView[role="grid"] QLineEdit {{
         border: 2px solid {p.accent};
-        border-radius: 0;
+        border-radius: {m.pill_radius + 2}px;
         padding: 0;
         margin: 0;
         min-height: 0;
@@ -409,13 +468,13 @@ def stylesheet(
     }}
     /* The stub above the dates: part of the same ruled table, not a stray grey box. */
     QTableView[role="grid"] QTableCornerButton::section {{
-        background: {p.background};
+        background: {p.elevated};
         border: none;
         border-right: 1px solid {p.border};
         border-bottom: 1px solid {p.border};
     }}
     QTableView[role="grid"] QHeaderView::section {{
-        background: {p.background};
+        background: {p.elevated};
         border: none;
         border-right: 1px solid {p.border};
         border-bottom: 1px solid {p.border};
@@ -448,11 +507,15 @@ def stylesheet(
        shadow is worth the repaint. */
     QFrame#card {{
         background: {p.elevated};
-        border: 1px solid {p.border};
+        border: 1px solid transparent;
         border-radius: {m.radius_lg}px;
     }}
-    QFrame#card:hover {{ border-color: {p.border_strong}; }}
-    QFrame#card[selected="true"] {{ border-color: {p.accent}; }}
+    QFrame#card:hover {{
+        border-color: {p.border_strong};
+    }}
+    QFrame#card[selected="true"] {{
+        border: 1px solid {p.accent};
+    }}
     QLabel#cardTitle {{ font-size: 17px; font-weight: 600; }}
     QLabel#sectionTitle {{ font-size: 15px; font-weight: 600; }}
 
@@ -528,14 +591,14 @@ def stylesheet(
        open a list to find out what the choices are. */
     QWidget#segmented {{
         background: {p.surface_active};
-        border-radius: {m.radius_md}px;
+        border-radius: {m.control_height // 2}px;
     }}
     QPushButton[segment="true"] {{
         min-height: {m.segment_height}px;
         max-height: {m.segment_height}px;
         padding: 0 14px;
         border: 1px solid transparent;
-        border-radius: {m.radius_sm}px;
+        border-radius: {m.segment_height // 2}px;
         background: transparent;
         color: {p.text_secondary};
         font-weight: 400;
@@ -562,12 +625,12 @@ def stylesheet(
 
     QScrollArea#cardList {{ background: transparent; border: none; }}
     QScrollArea#cardList > QWidget > QWidget {{ background: transparent; }}
-    QScrollArea#settingsScroll {{ background: {p.surface}; border: none; }}
-    QFrame#workspaceBody {{ background: {p.surface}; border: none; }}
+    QScrollArea#settingsScroll {{ background: transparent; border: none; }}
+    QFrame#workspaceBody {{ background: transparent; border: none; }}
     QFrame#gridCard {{
-        background: {p.surface};
-        border: 1px solid {p.border_strong};
-        border-radius: 0;
+        background: {p.elevated};
+        border: none;
+        border-radius: {m.radius_lg}px;
     }}
 
     /* Calendar popup ------------------------------------------------------- */
@@ -606,15 +669,15 @@ def stylesheet(
     QMenu {{
         background: {p.elevated};
         border: 1px solid {p.border_strong};
-        border-radius: {m.radius_md}px;
-        padding: {m.space_1}px;
+        border-radius: 10px;
+        padding: 5px;
     }}
     QMenu::item {{
         padding: {m.space_2}px {m.space_3}px;
-        border-radius: {m.radius_sm}px;
+        border-radius: 6px;
         color: {p.text_primary};
     }}
-    QMenu::item:selected {{ background: {p.surface_hover}; }}
+    QMenu::item:selected {{ background: {p.accent}; color: {p.on_accent}; }}
     QMenu::separator {{ height: 1px; background: {p.border}; margin: {m.space_1}px 0; }}
     QStatusBar {{
         background: {p.background};
@@ -649,7 +712,7 @@ class ThemeManager(QObject):
 
     def __init__(self, mode: ThemeMode = ThemeMode.SYSTEM) -> None:
         super().__init__()
-        self._font_family = load_font_family()
+        self._font_family = ui_font_family()
         self._mode = mode
         self._palette = self._palette_for_mode()
 

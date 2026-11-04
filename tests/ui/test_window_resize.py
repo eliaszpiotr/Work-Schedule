@@ -58,16 +58,24 @@ def test_all_main_screens_remain_usable_at_minimum_window_size(
         window._navigation.setCurrentRow(2)
         QApplication.processEvents()
         settings_page = window._settings_view
+        settings_page.show_section("hours")
+        QApplication.processEvents()
         scroller = settings_page.findChild(QScrollArea, "settingsScroll")
         editor = settings_page._editor
-        assert scroller.verticalScrollBar().maximum() > 0
         assert scroller.horizontalScrollBar().maximum() == 0
         assert editor.height() >= editor.sizeHint().height()
+
+        # The switch is the one control every row shows, open or closed.
+        def top_of(widget) -> int:  # noqa: ANN001 - any row widget
+            return widget.mapTo(editor, QPoint(0, 0)).y()
+
         for earlier, later in zip(editor.rows, editor.rows[1:], strict=False):
-            assert earlier.opens.geometry().bottom() < later.opens.geometry().top()
+            switch = earlier.open_switch
+            assert top_of(switch) + switch.height() <= top_of(later.open_switch)
         scroller.verticalScrollBar().setValue(scroller.verticalScrollBar().maximum())
         QApplication.processEvents()
-        last = editor.rows[-1].closes
+        sunday = editor.rows[-1]
+        last = sunday.closes if sunday.closes.isVisibleTo(editor) else sunday.closed_label
         assert last.mapTo(scroller.viewport(), QPoint(0, last.height())).y() <= (
             scroller.viewport().height()
         )
@@ -99,7 +107,7 @@ def test_all_main_screens_remain_usable_at_minimum_window_size(
         assert grid._totals_bar.geometry().top() >= grid._table.geometry().bottom()
         help_button = grid._absence_help
         assert help_button.mapTo(grid, QPoint(help_button.width(), 0)).x() <= grid.width()
-        assert grid._edit_rules.mapTo(grid, QPoint(grid._edit_rules.width(), 0)).x() <= grid.width()
+        assert grid._more.mapTo(grid, QPoint(grid._more.width(), 0)).x() <= grid.width()
         assert grid._finish.mapTo(grid, QPoint(grid._finish.width(), 0)).x() <= grid.width()
 
         window.resize(1180, 900)

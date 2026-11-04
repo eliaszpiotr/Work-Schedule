@@ -25,7 +25,8 @@ from work_scheduler.services import (
 from work_scheduler.settings import Settings, ThemeMode
 from work_scheduler.ui.components import BrandMark, PlainLabel, icon_button, restyle
 from work_scheduler.ui.employees import EmployeesView
-from work_scheduler.ui.icons import load_icon
+from work_scheduler.ui.icons import nav_icon
+from work_scheduler.ui.nav_delegate import NavDelegate
 from work_scheduler.ui.schedules.schedules_page import SchedulesPage
 from work_scheduler.ui.settings import SettingsView
 from work_scheduler.ui.theme import METRICS, ThemeManager
@@ -54,6 +55,11 @@ class MainWindow(QMainWindow):
         self._session_factory = session_factory
         self._theme = theme or ThemeManager(self._settings.theme)
         self._navigation = QListWidget()
+        self._nav_delegate = NavDelegate(self._theme.palette, self._navigation)
+        self._navigation.setItemDelegate(self._nav_delegate)
+        # The delegate draws its own hover; the view only reports it when asked to.
+        self._navigation.setMouseTracking(True)
+        self._navigation.viewport().setAttribute(Qt.WidgetAttribute.WA_Hover)
         self._pages = QStackedWidget()
         self._collapsed = False
 
@@ -123,8 +129,8 @@ class MainWindow(QMainWindow):
         root = QWidget()
         root.setObjectName("window")
         layout = QHBoxLayout(root)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setContentsMargins(*(METRICS.window_inset,) * 4)
+        layout.setSpacing(METRICS.window_inset)
         layout.addWidget(self._sidebar())
         layout.addWidget(self._pages, stretch=1)
 
@@ -136,6 +142,9 @@ class MainWindow(QMainWindow):
 
         self.set_sidebar_collapsed(self._collapsed)
         self.setCentralWidget(root)
+        # Left to itself the window hands first focus to the collapse button and draws
+        # a ring on it before anyone has touched the keyboard.
+        self._navigation.setFocus()
 
     def _sidebar(self) -> QFrame:
         sidebar = self._sidebar_frame = QFrame()
@@ -152,6 +161,7 @@ class MainWindow(QMainWindow):
         self._brand_name = PlainLabel(self._config.app_name)
         self._brand_name.setObjectName("brand")
         self._collapse = icon_button("panel-left", t("sidebar.collapse"), self._theme.palette)
+        self._collapse.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self._collapse.clicked.connect(self.toggle_sidebar)
 
         self._brand = QWidget()
@@ -188,7 +198,7 @@ class MainWindow(QMainWindow):
         # Refilled on a language change as well as on a collapse, so it starts empty
         # rather than appending a second set of entries underneath the first.
         self._navigation.clear()
-        colour = self._theme.palette.text_secondary
+        palette = self._theme.palette
         # Collapsed, the highlight is the only thing saying which screen is open, so it
         # has to be a square centred under its icon rather than a band as wide as the
         # panel happens to be.
@@ -197,12 +207,18 @@ class MainWindow(QMainWindow):
         # than the viewport pushes every icon off centre by the overflow.
         size = QSize(0, side) if self._collapsed else QSize(0, METRICS.nav_item_height + 4)
 
+        alignment = (
+            Qt.AlignmentFlag.AlignCenter
+            if self._collapsed
+            else Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+
         for key, icon in zip(PAGE_KEYS, PAGE_ICONS, strict=True):
             name = t(key)
-            item = QListWidgetItem(load_icon(icon, colour), "" if self._collapsed else name)
+            item = QListWidgetItem(nav_icon(icon, palette), "" if self._collapsed else name)
             item.setData(Qt.ItemDataRole.AccessibleTextRole, name)
             item.setSizeHint(size)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            item.setTextAlignment(alignment)
             self._navigation.addItem(item)
 
     # The sidebar ------------------------------------------------------------
@@ -246,6 +262,7 @@ class MainWindow(QMainWindow):
         self._brand_row.setStretch(TRAILING_STRETCH, 1 if collapsed else 0)
 
         # Icon-only entries have no room for the padding a label needs beside them.
+        self._nav_delegate.set_collapsed(collapsed)
         self._navigation.setProperty("collapsed", "true" if collapsed else None)
         restyle(self._navigation)
 
@@ -262,8 +279,9 @@ class MainWindow(QMainWindow):
 
     def _refresh_icons(self) -> None:
         palette = self._theme.palette
+        self._nav_delegate.set_palette(palette)
         self._mark.apply_palette(palette)
         for row, icon in enumerate(PAGE_ICONS):
-            self._navigation.item(row).setIcon(load_icon(icon, palette.text_secondary))
+            self._navigation.item(row).setIcon(nav_icon(icon, palette))
         for page in self._pages_in_order():
             page.apply_palette(palette)

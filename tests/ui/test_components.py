@@ -151,7 +151,7 @@ class TestTradeColours:
     def test_the_pharmacist_takes_the_tinted_one(self, application) -> None:
         fill, ink = trade_colours(Profession.PHARMACIST, LIGHT)
 
-        assert (fill, ink) == (LIGHT.holiday_surface, LIGHT.holiday_ink)
+        assert (fill, ink) == (LIGHT.work_surface, LIGHT.work_ink)
 
     def test_the_technician_stays_neutral(self, application) -> None:
         fill, _ = trade_colours(Profession.TECHNICIAN, LIGHT)

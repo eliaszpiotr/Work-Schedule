@@ -1,8 +1,10 @@
 from collections.abc import Callable
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import Property, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QDialog,
     QFrame,
@@ -10,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListView,
     QPushButton,
+    QSizePolicy,
     QStyleFactory,
     QToolButton,
     QVBoxLayout,
@@ -43,7 +46,7 @@ def trade_colours(profession: Profession | str | None, palette: Palette) -> tupl
     colour with nothing to show that anything went wrong.
     """
     if profession == Profession.PHARMACIST:
-        return palette.holiday_surface, palette.holiday_ink
+        return palette.work_surface, palette.work_ink
     return palette.surface_active, palette.text_secondary
 
 
@@ -241,6 +244,17 @@ def icon_button(name: str, accessible_name: str, palette: Palette) -> QToolButto
     return button
 
 
+def round_icon_button(name: str, accessible_name: str, palette: Palette) -> QToolButton:
+    button = QToolButton()
+    button.setProperty("variant", "roundPrimary")
+    button.setIcon(load_icon(name, palette.on_accent))
+    button.setIconSize(QSize(16, 16))
+    button.setAccessibleName(accessible_name)
+    button.setToolTip(accessible_name)
+    button.setCursor(Qt.CursorShape.PointingHandCursor)
+    return button
+
+
 class PageHeader(QFrame):
     """Compact application toolbar: title on the left, one primary action on the right."""
 
@@ -289,7 +303,7 @@ class EmptyState(QWidget):
 
         if action is not None:
             label, callback = action
-            button = primary_button(label)
+            button = secondary_button(label)
             button.clicked.connect(callback)
             row = QHBoxLayout()
             row.addStretch()
@@ -408,3 +422,97 @@ class BrandMark(PlainLabel):
 
     def apply_palette(self, palette: Palette) -> None:
         self.setPixmap(load_icon("calendar-days", palette.on_accent, 16).pixmap(16, 16))
+
+
+class Switch(QCheckBox):
+    """An on/off switch, drawn rather than styled.
+
+    Still a QCheckBox underneath, so ``setChecked`` and ``toggled`` work as they did.
+    The colours come from the stylesheet through ``qproperty-``, which is what lets a
+    theme change repaint it with no code of its own.
+    """
+
+    WIDTH, HEIGHT, INSET = 38, 22, 2
+
+    def __init__(self, accessible_name: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setProperty("role", "switch")
+        self.setAccessibleName(accessible_name)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(self.WIDTH, self.HEIGHT)
+        self._on, self._off, self._knob = QColor("#007AFF"), QColor("#E8E8ED"), QColor("#FFFFFF")
+
+    def _get_on(self) -> QColor:
+        return self._on
+
+    def _set_on(self, colour: QColor) -> None:
+        self._on = QColor(colour)
+        self.update()
+
+    def _get_off(self) -> QColor:
+        return self._off
+
+    def _set_off(self, colour: QColor) -> None:
+        self._off = QColor(colour)
+        self.update()
+
+    def _get_knob(self) -> QColor:
+        return self._knob
+
+    def _set_knob(self, colour: QColor) -> None:
+        self._knob = QColor(colour)
+        self.update()
+
+    onColor = Property(QColor, _get_on, _set_on)  # noqa: N815 - named for qproperty-onColor
+    offColor = Property(QColor, _get_off, _set_off)  # noqa: N815
+    knobColor = Property(QColor, _get_knob, _set_knob)  # noqa: N815
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt API
+        return QSize(self.WIDTH, self.HEIGHT)
+
+    def hitButton(self, position) -> bool:  # noqa: N802, ANN001 - Qt API
+        return self.rect().contains(position)
+
+    def paintEvent(self, event) -> None:  # noqa: N802, ANN001 - Qt API
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if not self.isEnabled():
+            painter.setOpacity(0.5)
+        track = QRectF(self.rect())
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self._on if self.isChecked() else self._off)
+        painter.drawRoundedRect(track, track.height() / 2, track.height() / 2)
+
+        side = track.height() - 2 * self.INSET
+        left = track.right() - self.INSET - side if self.isChecked() else track.left() + self.INSET
+        painter.setBrush(self._knob)
+        painter.drawEllipse(QRectF(left, track.top() + self.INSET, side, side))
+        painter.end()
+
+
+def inset_divider(inset: int) -> QWidget:
+    """A hairline between rows that starts where the text does, as in System Settings."""
+    holder = QWidget()
+    row = QHBoxLayout(holder)
+    row.setContentsMargins(inset, 0, 0, 0)
+    line = QFrame()
+    line.setObjectName("rowDivider")
+    line.setFixedHeight(1)
+    row.addWidget(line)
+    return holder
+
+
+def settings_row(label: str, control: QWidget, inset: int = METRICS.space_4) -> QFrame:
+    """One line of a settings card: what it is on the left, the control on the right."""
+    frame = QFrame()
+    frame.setObjectName("settingsRow")
+    row = QHBoxLayout(frame)
+    row.setContentsMargins(inset, METRICS.space_3, inset, METRICS.space_3)
+    row.setSpacing(METRICS.space_3)
+    caption = PlainLabel(label)
+    caption.setWordWrap(True)
+    row.addWidget(caption, stretch=1)
+    row.addWidget(control, alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    # A wrapped hint above the card must not be able to borrow this row's height.
+    frame.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+    return frame

@@ -14,8 +14,8 @@ from work_scheduler.ui.settings.rule_sets_dialog import (
     RuleEditorDialog,
     RuleSetEditDialog,
     RuleSetPickerDialog,
-    RuleSetsDialog,
 )
+from work_scheduler.ui.settings.rule_sets_panel import RuleSetCard, RuleSetsPanel
 from work_scheduler.ui.theme import LIGHT
 
 
@@ -40,8 +40,8 @@ def test_rule_forms_and_schedule_picker(application, engine: Engine) -> None:  #
     assert set_editor.name.text() == source.name
     assert set_editor.rows.count() == 1
 
-    manager = RuleSetsDialog(None, service)
-    assert manager._rows.count() == 1
+    manager = RuleSetsPanel(service, LIGHT)
+    assert len(manager.findChildren(RuleSetCard)) == 1
 
     week = [DayHours(day, time(8), time(20)) for day in range(7)]
     wizard = ScheduleDialog(None, [], week, rule_sets=service.list_sets())

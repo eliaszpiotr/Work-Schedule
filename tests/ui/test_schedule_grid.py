@@ -1,8 +1,9 @@
 from datetime import date, time
 
 import pytest
-from PySide6.QtCore import QPoint, Qt
-from PySide6.QtWidgets import QDialog, QLabel
+from PySide6.QtCore import QPoint, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics
+from PySide6.QtWidgets import QApplication, QDialog, QFrame, QLabel, QLineEdit, QPushButton
 from sqlalchemy import Engine
 
 from work_scheduler.database.models import Profession
@@ -18,9 +19,11 @@ from work_scheduler.services import (
 from work_scheduler.services.time_text import format_hours
 from work_scheduler.ui.schedules import schedule_grid
 from work_scheduler.ui.schedules.schedule_grid import (
+    CELL_KIND_ROLE,
     LaneHeader,
     ScheduleGridModel,
     ScheduleGridView,
+    ShiftDelegate,
     absence_help_text,
     trade_name,
 )
@@ -188,6 +191,37 @@ class TestEditing:
             set_language(before)
         assert index.data() == polish
 
+    def test_a_shift_is_a_work_pill(self, model: ScheduleGridModel) -> None:
+        model.setData(model.index(0, 0), "10-15")
+
+        assert model.index(0, 0).data(CELL_KIND_ROLE) == "work"
+
+    def test_an_empty_cell_has_no_kind(self, model: ScheduleGridModel) -> None:
+        assert model.index(0, 0).data(CELL_KIND_ROLE) is None
+
+    def test_an_absence_keeps_its_stored_code_in_english(self, model: ScheduleGridModel) -> None:
+        index = model.index(0, 0)
+        model.setData(index, "ZCh")
+        before = current_language()
+        try:
+            set_language(Language.EN)
+            assert index.data(CELL_KIND_ROLE) == "ZCh"
+            assert index.data() == "SL"
+        finally:
+            set_language(before)
+
+    def test_a_day_without_a_pharmacist_is_orange(self, model: ScheduleGridModel) -> None:
+        model.setData(model.index(0, 1), "8-20")
+
+        colour = model.index(0, 0).data(Qt.ItemDataRole.BackgroundRole)
+        assert colour == QColor(LIGHT.warning_surface)
+
+    def test_hours_outside_opening_are_red(self, model: ScheduleGridModel) -> None:
+        model.setData(model.index(0, 0), "6-15")
+
+        colour = model.index(0, 0).data(Qt.ItemDataRole.BackgroundRole)
+        assert colour == QColor(LIGHT.danger_surface)
+
     def test_typing_a_range_stores_a_shift(
         self, model: ScheduleGridModel, schedule: ScheduleData, shifts: ShiftService
     ) -> None:
@@ -255,13 +289,13 @@ class TestPainting:
     def corner_colour(view: ScheduleGridView, row: int) -> str:
         image = view._table.viewport().grab().toImage()
         rect = view._table.visualRect(view._model.index(row, 0))
-        return image.pixelColor(rect.topLeft() + QPoint(6, 6)).name()
+        return image.pixelColor(rect.topLeft() + QPoint(2, 2)).name()
 
     def test_an_ordinary_cell_is_left_plain(self, view: ScheduleGridView) -> None:
         # Covering the whole opening leaves the row with nothing to complain about.
         view._model.setData(view._model.index(0, 0), "8-20")
 
-        assert self.corner_colour(view, 0) == LIGHT.background.lower()
+        assert self.corner_colour(view, 0) == LIGHT.elevated.lower()
 
     def test_a_closed_day_is_shaded(self, view: ScheduleGridView) -> None:
         assert self.corner_colour(view, SUNDAY_ROW) == LIGHT.surface_active.lower()
@@ -269,7 +303,7 @@ class TestPainting:
     def test_hours_outside_opening_time_are_highlighted(self, view: ScheduleGridView) -> None:
         view._model.setData(view._model.index(0, 0), "6-15")
 
-        assert self.corner_colour(view, 0) == LIGHT.warning_surface.lower()
+        assert self.corner_colour(view, 0) == LIGHT.danger_surface.lower()
 
 
 class TestTotals:
@@ -403,7 +437,7 @@ class TestHolidayRows:
 
         assert label == "sb 15.08"
 
-    def test_the_holiday_row_is_painted_blue(self, view: ScheduleGridView) -> None:
+    def test_the_holiday_row_is_painted_purple(self, view: ScheduleGridView) -> None:
         assert TestPainting.corner_colour(view, HOLIDAY_ROW) == LIGHT.holiday_surface.lower()
 
     def test_an_ordinary_closed_sunday_stays_grey(self, view: ScheduleGridView) -> None:
@@ -435,14 +469,14 @@ class TestSelectionIsNotConfusedWithAClosedDay:
     def test_a_selected_cell_keeps_its_own_background(self, view: ScheduleGridView) -> None:
         view._table.setCurrentIndex(view._model.index(0, 0))
 
-        assert TestPainting.corner_colour(view, 0) == LIGHT.background.lower()
+        assert TestPainting.corner_colour(view, 0) == LIGHT.elevated.lower()
 
     def test_a_selected_cell_is_marked_by_a_border_instead(self, view: ScheduleGridView) -> None:
         view._table.setCurrentIndex(view._model.index(0, 0))
 
         image = view._table.viewport().grab().toImage()
         rect = view._table.visualRect(view._model.index(0, 0))
-        edge = image.pixelColor(rect.center().x(), rect.top() + 1).name()
+        edge = image.pixelColor(rect.center().x(), rect.top() + METRICS.pill_inset + 4).name()
 
         assert edge == LIGHT.accent.lower()
 
@@ -459,10 +493,10 @@ class TestNoTextClutter:
         tip = view._model.headerData(0, Qt.Orientation.Vertical, Qt.ItemDataRole.ToolTipRole)
         assert tip is None
 
-    def test_the_day_is_still_red(self, view: ScheduleGridView) -> None:
+    def test_the_day_is_still_orange(self, view: ScheduleGridView) -> None:
         view._model.setData(view._model.index(0, 1), "8-20")
 
-        assert TestPainting.corner_colour(view, 0) == LIGHT.danger_surface.lower()
+        assert TestPainting.corner_colour(view, 0) == LIGHT.warning_surface.lower()
 
     def test_a_rejected_entry_is_reported_then_clears_itself(self, view: ScheduleGridView) -> None:
         view._model.setData(view._model.index(0, 0), "812")
@@ -490,8 +524,8 @@ class TestConsistentTable:
             self.right_edge(view, row, column) for column in range(view._model.columnCount() - 1)
         }
 
-    def test_a_plain_row_is_ruled_the_same_across(self, view: ScheduleGridView) -> None:
-        assert self.every_internal_right_edge(view, 0) == {LIGHT.border.lower()}
+    def test_there_are_no_vertical_rules_between_people(self, view: ScheduleGridView) -> None:
+        assert self.every_internal_right_edge(view, 0) == {LIGHT.elevated.lower()}
 
     def test_a_filled_row_is_ruled_exactly_like_a_plain_one(self, view: ScheduleGridView) -> None:
         view._model.setData(view._model.index(0, 0), "8-20")
@@ -499,24 +533,25 @@ class TestConsistentTable:
         assert self.every_internal_right_edge(view, 0) == self.every_internal_right_edge(view, 1)
 
     def test_a_closed_row_is_ruled_the_same_too(self, view: ScheduleGridView) -> None:
-        assert self.every_internal_right_edge(view, SUNDAY_ROW) == {LIGHT.border.lower()}
+        assert self.every_internal_right_edge(view, SUNDAY_ROW) == {LIGHT.surface_active.lower()}
 
     def test_a_holiday_row_is_ruled_the_same_too(self, view: ScheduleGridView) -> None:
-        assert self.every_internal_right_edge(view, HOLIDAY_ROW) == {LIGHT.border.lower()}
+        assert self.every_internal_right_edge(view, HOLIDAY_ROW) == {LIGHT.holiday_surface.lower()}
 
     def test_the_last_cell_does_not_double_the_outside_frame(self, view: ScheduleGridView) -> None:
         last = view._model.columnCount() - 1
-        assert self.right_edge(view, 0, last) == LIGHT.background.lower()
+        assert self.right_edge(view, 0, last) == LIGHT.elevated.lower()
 
-    def test_the_table_has_one_complete_outer_frame(self, view: ScheduleGridView) -> None:
+    def test_the_table_card_draws_no_outer_frame(self, view: ScheduleGridView) -> None:
         view.show()
         image = view._card.grab().toImage()
         middle_x, middle_y = image.width() // 2, image.height() // 2
+        frame = LIGHT.border_strong.lower()
 
-        assert image.pixelColor(middle_x, 0).name() == LIGHT.border_strong.lower()
-        assert image.pixelColor(middle_x, image.height() - 1).name() == LIGHT.border_strong.lower()
-        assert image.pixelColor(0, middle_y).name() == LIGHT.border_strong.lower()
-        assert image.pixelColor(image.width() - 1, middle_y).name() == LIGHT.border_strong.lower()
+        assert image.pixelColor(middle_x, 0).name() != frame
+        assert image.pixelColor(middle_x, image.height() - 1).name() != frame
+        assert image.pixelColor(0, middle_y).name() != frame
+        assert image.pixelColor(image.width() - 1, middle_y).name() != frame
 
     def test_the_footer_finishes_flush_with_the_shared_frame(self, view: ScheduleGridView) -> None:
         view.show()
@@ -533,13 +568,15 @@ class TestConsistentTable:
             expected = grid_left, grid_left + grid.width() - 1
             assert (round(total.left()), round(total.right())) == expected
 
-    def test_the_totals_have_the_same_internal_rule(self, view: ScheduleGridView) -> None:
+    def test_the_totals_have_a_rule_on_top_only(self, view: ScheduleGridView) -> None:
         view.show()
         image = view._totals_bar.grab().toImage()
         rect = view._totals_bar.column_rect(0)
 
-        rule = image.pixelColor(round(rect.right()), round(rect.center().y())).name()
-        assert rule == LIGHT.border.lower()
+        assert image.pixelColor(round(rect.center().x()), 0).name() == LIGHT.border.lower()
+        assert image.pixelColor(round(rect.right()), round(rect.center().y())).name() == (
+            LIGHT.elevated.lower()
+        )
 
     def test_the_footer_stays_visible_while_days_scroll(self, view: ScheduleGridView) -> None:
         view.show()
@@ -651,3 +688,149 @@ class TestLegend:
         written = " ".join(label.text() for label in view._legend_strip.findChildren(QLabel))
 
         assert "10-15" in written
+
+
+def _close(a: QColor, b: str, tolerance: int = 8) -> bool:
+    other = QColor(b)
+    return all(
+        abs(x - y) <= tolerance
+        for x, y in ((a.red(), other.red()), (a.green(), other.green()), (a.blue(), other.blue()))
+    )
+
+
+def _settled(view: ScheduleGridView, width: int = 880, height: int = 560) -> None:
+    view.resize(width, height)
+    QApplication.processEvents()
+
+
+def _cell_image(view: ScheduleGridView, row: int, column: int):
+    _settled(view)
+    image = view._table.viewport().grab().toImage()
+    return image, view._table.visualRect(view._model.index(row, column))
+
+
+class TestPills:
+    def test_a_shift_is_drawn_as_a_blue_pill(self, view: ScheduleGridView) -> None:
+        view._model.setData(view._model.index(0, 0), "8-20")
+        image, rect = _cell_image(view, 0, 0)
+
+        inside = image.pixelColor(rect.left() + METRICS.pill_inset + 6, rect.center().y())
+        corner = image.pixelColor(rect.left() + 1, rect.top() + 1)
+        assert _close(inside, LIGHT.work_surface)
+        assert _close(corner, LIGHT.elevated)
+
+    def test_a_long_name_is_elided(self, view: ScheduleGridView) -> None:
+        font = QFont()
+        font.setPointSizeF(12)
+        metrics = QFontMetrics(font)
+        elided = LaneHeader._elided("N" * 60, font, 120)
+
+        assert elided.endswith("…")
+        assert metrics.horizontalAdvance(elided) <= 120 - 12
+
+    def test_ten_people_fit_the_smallest_window(
+        self, application, engine: Engine, schedules: ScheduleService, shifts: ShiftService
+    ) -> None:
+        employees = EmployeeService(create_session_factory(engine))
+        ids = [
+            employees.create(f"Osoba{n}", "Testowa", Profession.PHARMACIST).id for n in range(10)
+        ]
+        created = schedules.create("Tłok", *PERIOD, ids, WEEK)
+        grid = ScheduleGridView(
+            schedules.open_schedule(created.id), schedules, shifts, LIGHT, employees=employees
+        )
+        for column in range(10):
+            grid._model.setData(grid._model.index(0, column), "8-20")
+        _settled(grid)
+        bar = grid._table.horizontalScrollBar()
+        last = grid._model.columnCount() - 1
+
+        for column, position in ((0, 0), (last, bar.maximum())):
+            bar.setValue(position)
+            QApplication.processEvents()
+            image = grid._table.viewport().grab().toImage()
+            rect = grid._table.visualRect(grid._model.index(0, column))
+            pill = ShiftDelegate._pill_rect(rect)
+
+            assert QRectF(rect).contains(pill)
+            assert pill.width() >= 40
+            centre = image.pixelColor(round(pill.center().x()), round(pill.center().y() - 8))
+            assert _close(centre, LIGHT.work_surface)
+
+    def test_pills_follow_the_theme(self, view: ScheduleGridView) -> None:
+        view._model.setData(view._model.index(0, 0), "8-20")
+        view.apply_palette(DARK)
+        image, rect = _cell_image(view, 0, 0)
+
+        inside = image.pixelColor(rect.left() + METRICS.pill_inset + 6, rect.center().y())
+        assert _close(inside, DARK.work_surface)
+
+    def test_the_totals_bar_follows_the_theme(self, view: ScheduleGridView) -> None:
+        view.apply_palette(DARK)
+        _settled(view)
+        image = view._totals_bar.grab().toImage()
+
+        assert _close(image.pixelColor(image.width() - 2, 5), DARK.elevated, 2)
+
+
+class TestHeader:
+    def test_more_menu_holds_details_and_rules(self, view: ScheduleGridView) -> None:
+        assert view._more_menu.actions() == [view._edit_details, view._edit_rules]
+
+    def test_the_toolbar_has_one_primary_button(self, view: ScheduleGridView) -> None:
+        bar = view.findChild(QFrame, "toolbar")
+        primaries = [
+            button
+            for button in bar.findChildren(QPushButton)
+            if button.property("variant") == "primary"
+        ]
+        assert primaries == [view._finish]
+
+    def test_header_icons_follow_the_theme(self, view: ScheduleGridView) -> None:
+        view.apply_palette(DARK)
+
+        for button in (view._more, view._back):
+            image = button.icon().pixmap(18, 18).toImage()
+            assert any(
+                _close(image.pixelColor(x, y), DARK.text_secondary)
+                for x in range(image.width())
+                for y in range(image.height())
+                if image.pixelColor(x, y).alpha() > 200
+            )
+
+
+class TestFinalPolish:
+    def test_the_card_rounds_its_corners_over_the_table(self, view: ScheduleGridView) -> None:
+        view.resize(1180, 760)
+        view.show()
+        QApplication.processEvents()
+
+        # A mask clips children, not the card's own grab, so look at the page around it.
+        image = view.grab().toImage()
+        radius = METRICS.radius_lg
+        origin = view._card.mapTo(view, QPoint(0, 0))
+
+        def near(colour: QColor) -> bool:
+            return _close(colour, LIGHT.elevated)
+
+        assert not near(image.pixelColor(origin.x() + 1, origin.y() + 1))
+        assert near(image.pixelColor(origin.x() + radius, origin.y() + radius))
+
+    def test_the_back_button_takes_no_focus_ring_on_open(self, view: ScheduleGridView) -> None:
+        view.show()
+        QApplication.processEvents()
+
+        assert view._back.focusPolicy() == Qt.FocusPolicy.TabFocus
+        assert view.focusWidget() is view._table
+
+    def test_the_editor_sits_over_the_pill(self, view: ScheduleGridView) -> None:
+        _settled(view)
+        view.show()
+        index = view._model.index(0, 0)
+        view._table.setCurrentIndex(index)
+        view._table.edit(index)
+
+        editor = view._table.viewport().findChild(QLineEdit)
+        pill = ShiftDelegate._pill_rect(view._table.visualRect(index)).toRect()
+        assert editor is not None
+        assert editor.geometry() == pill

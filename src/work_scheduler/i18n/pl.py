@@ -116,9 +116,6 @@ TEXT: dict[str, object] = {
     "audit.consecutive": "{name}, {first}–{last}: {actual} dni pracy z rzędu; maksimum {target}",
     "audit.staffing": "{day}: potrzeba co najmniej {count} ({profession}) w godzinach {hours}",
     "rules.title": "Zestawy reguł",
-    "rules.manage_heading": "Twoje zestawy reguł",
-    "rules.in_set": "Reguły w zestawie",
-    "rules.manage_hint": "Wybierz zestaw, aby zobaczyć reguły, albo utwórz nowy.",
     "rules.empty": (
         "Nie ma jeszcze zestawów reguł. Utwórz pierwszy, aby sprawdzać grafiki po swojemu."
     ),
@@ -132,14 +129,12 @@ TEXT: dict[str, object] = {
         "Twórz własne kontrole grafików. Wybierz zestaw przy tworzeniu grafiku; "
         "każdy grafik zachowa własną kopię reguł."
     ),
-    "rules.manage": "Zarządzaj zestawami reguł…",
     "rules.add_set": "Nowy zestaw",
     "rules.edit_set": "Edytuj zestaw reguł",
     "rules.name": "Nazwa zestawu",
     "rules.rules": "Reguły",
     "rules.add_rule": "Dodaj regułę",
     "rules.edit_rule": "Edytuj regułę",
-    "rules.done": "Gotowe",
     "rules.delete": "Usunąć zestaw reguł?",
     "rules.delete_confirm": "Usunąć „{name}”? Istniejące grafiki zachowają swoje kopie.",
     "rules.rule_set": "Zestaw reguł",
@@ -378,6 +373,8 @@ TEXT: dict[str, object] = {
         "Nowe grafiki dostają te godziny jako punkt wyjścia. Zmiana tutaj nie rusza grafików "
         "już utworzonych."
     ),
+    "settings.hours.tab": "Godziny otwarcia",
+    "settings.hours.save": "Zapisz godziny",
     "settings.hours.saved": "Zapisano godziny otwarcia.",
     "settings.appearance.title": "Wygląd i język",
     "settings.appearance.hint": (

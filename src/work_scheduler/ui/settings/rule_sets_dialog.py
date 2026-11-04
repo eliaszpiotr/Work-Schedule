@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMessageBox,
-    QScrollArea,
     QSpinBox,
     QStackedWidget,
     QStyle,
@@ -24,7 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from work_scheduler.i18n import t, weekday_name, weekday_short
-from work_scheduler.services import RuleSetData, RuleSetService, ServiceError
+from work_scheduler.services import RuleSetData, ServiceError
 from work_scheduler.services.rule_sets import (
     BLOCK,
     CONSECUTIVE,
@@ -613,179 +612,6 @@ class RuleSetDelegate(QStyledItemDelegate):
             subtitle,
         )
         painter.restore()
-
-
-class RuleSetsDialog(QDialog):
-    def __init__(
-        self, parent: QWidget | None, service: RuleSetService, palette: Palette = LIGHT
-    ) -> None:
-        super().__init__(parent)
-        self.setWindowTitle(t("rules.title"))
-        self.setMinimumWidth(540)
-        self._service = service
-        self._palette = palette
-        self._people = service.list_people()
-        self._rows = QListWidget()
-        self._rows.setObjectName("ruleSetsList")
-        self._rows.setFrameShape(QFrame.Shape.NoFrame)
-        self._rows.setSpacing(METRICS.space_1)
-        self._rows.setStyleSheet(
-            "QListWidget#ruleSetsList { background: transparent; border: none; }"
-        )
-        self._rows.setItemDelegate(RuleSetDelegate(palette, self._rows))
-        self._rows.currentRowChanged.connect(self._update_preview)
-        self._rows.itemDoubleClicked.connect(lambda _: self._edit())
-
-        heading = PlainLabel(t("rules.manage_heading"))
-        heading.setObjectName("sectionTitle")
-        hint = PlainLabel(t("rules.manage_hint"))
-        hint.setObjectName("mutedText")
-        hint.setWordWrap(True)
-        add = primary_button(t("rules.add_set"))
-        add.clicked.connect(self._add)
-        top = QHBoxLayout()
-        words = QVBoxLayout()
-        words.setSpacing(METRICS.space_1)
-        words.addWidget(heading)
-        words.addWidget(hint)
-        top.addLayout(words, stretch=1)
-        top.addWidget(add, alignment=Qt.AlignmentFlag.AlignTop)
-
-        self._empty = PlainLabel(t("rules.empty"))
-        self._empty.setObjectName("mutedText")
-        self._empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._empty.setWordWrap(True)
-        self._empty.setMinimumHeight(110)
-
-        self._preview = QFrame()
-        self._preview.setObjectName("card")
-        self._preview_title = PlainLabel(t("rules.in_set"))
-        self._preview_title.setObjectName("sectionTitle")
-        self._preview_content = QWidget()
-        self._preview_list = QVBoxLayout(self._preview_content)
-        self._preview_list.setContentsMargins(0, 0, 0, 0)
-        self._preview_list.setSpacing(METRICS.space_3)
-        self._preview_area = QScrollArea()
-        self._preview_area.setFrameShape(QFrame.Shape.NoFrame)
-        self._preview_area.setWidgetResizable(True)
-        self._preview_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._preview_area.setStyleSheet(
-            "QScrollArea { background: transparent; border: none; } "
-            "QScrollArea > QWidget > QWidget { background: transparent; }"
-        )
-        self._preview_area.setWidget(self._preview_content)
-        self._edit_button = secondary_button(t("common.edit"))
-        self._remove_button = secondary_button(t("common.delete"))
-        self._edit_button.clicked.connect(self._edit)
-        self._remove_button.clicked.connect(self._remove)
-        preview_header = QHBoxLayout()
-        preview_header.addWidget(self._preview_title)
-        preview_header.addStretch()
-        preview_header.addWidget(self._edit_button)
-        preview_header.addWidget(self._remove_button)
-        preview_layout = QVBoxLayout(self._preview)
-        preview_layout.setContentsMargins(*(METRICS.space_4,) * 4)
-        preview_layout.setSpacing(METRICS.space_2)
-        preview_layout.addLayout(preview_header)
-        preview_layout.addWidget(self._preview_area)
-
-        close = secondary_button(t("rules.done"))
-        close.clicked.connect(self.accept)
-        footer = QHBoxLayout()
-        footer.addStretch()
-        footer.addWidget(close)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(*(METRICS.space_5,) * 4)
-        layout.setSpacing(METRICS.space_4)
-        layout.addLayout(top)
-        layout.addWidget(self._empty)
-        layout.addWidget(self._rows)
-        layout.addWidget(self._preview)
-        layout.addLayout(footer)
-        self._refresh()
-
-    def _refresh(self, selected_id: int | None = None) -> None:
-        self._sets = self._service.list_sets()
-        self._rows.clear()
-        for item in self._sets:
-            row = QListWidgetItem(item.name)
-            row.setData(Qt.ItemDataRole.UserRole, t("rules.rule_count", count=len(item.rules)))
-            row.setToolTip(
-                "\n".join(rule_description(rule, dict(self._people)) for rule in item.rules)
-            )
-            self._rows.addItem(row)
-        self._rows.setFixedHeight(min(180, max(80, len(self._sets) * 74 + 8)))
-        has_sets = bool(self._sets)
-        self._empty.setVisible(not has_sets)
-        self._rows.setVisible(has_sets)
-        self._preview.setVisible(has_sets)
-        if has_sets:
-            index = next((i for i, item in enumerate(self._sets) if item.id == selected_id), 0)
-            self._rows.setCurrentRow(index)
-        else:
-            self._update_preview(-1)
-
-    def _update_preview(self, index: int) -> None:
-        item = self._sets[index] if 0 <= index < len(self._sets) else None
-        self._edit_button.setEnabled(item is not None)
-        self._remove_button.setEnabled(item is not None)
-        if item is None:
-            return
-        while self._preview_list.count():
-            entry = self._preview_list.takeAt(0)
-            if widget := entry.widget():
-                widget.deleteLater()
-        for rule in item.rules:
-            row = QWidget()
-            column = QVBoxLayout(row)
-            column.setContentsMargins(0, 0, 0, 0)
-            column.setSpacing(0)
-            description = PlainLabel(f"•  {rule_description(rule, dict(self._people))}")
-            description.setWordWrap(True)
-            severity = PlainLabel(t(f"rules.severity.{rule['severity']}"))
-            severity.setProperty("tone", "danger" if rule["severity"] == BLOCK else "warning")
-            column.addWidget(description)
-            column.addWidget(severity)
-            self._preview_list.addWidget(row)
-        self._preview_area.setFixedHeight(min(180, max(70, len(item.rules) * 55)))
-
-    def _selected(self) -> RuleSetData | None:
-        index = self._rows.currentRow()
-        return self._sets[index] if 0 <= index < len(self._sets) else None
-
-    def _add(self) -> None:
-        self._edit_item(None)
-
-    def _edit(self) -> None:
-        if item := self._selected():
-            self._edit_item(item)
-
-    def _edit_item(self, item: RuleSetData | None) -> None:
-        dialog = RuleSetEditDialog(self, item, self._palette, self._people)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        try:
-            saved = self._service.save(dialog.name.text(), dialog.rules, item.id if item else None)
-        except ServiceError as error:
-            QMessageBox.warning(self, t("common.failed"), str(error))
-            return
-        self._refresh(saved.id)
-
-    def _remove(self) -> None:
-        item = self._selected()
-        if item is None:
-            return
-        if (
-            QMessageBox.question(self, t("rules.delete"), t("rules.delete_confirm", name=item.name))
-            != QMessageBox.StandardButton.Yes
-        ):
-            return
-        try:
-            self._service.delete(item.id)
-        except ServiceError as error:
-            QMessageBox.warning(self, t("common.failed"), str(error))
-            return
-        self._refresh()
 
 
 class RuleSetPickerDialog(QDialog):

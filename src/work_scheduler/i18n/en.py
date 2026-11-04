@@ -115,9 +115,6 @@ TEXT: dict[str, object] = {
     "audit.consecutive": "{name}, {first}–{last}: {actual} consecutive workdays; maximum {target}",
     "audit.staffing": "{day}: at least {count} {profession} needed during {hours}",
     "rules.title": "Rule sets",
-    "rules.manage_heading": "Your rule sets",
-    "rules.in_set": "Rules in this set",
-    "rules.manage_hint": "Choose a set to see its rules or create a new one.",
     "rules.empty": "No rule sets yet. Create one to check schedules your way.",
     "rules.empty_rules": "No rules yet. Add the first rule below.",
     "rules.rule_count": {
@@ -129,14 +126,12 @@ TEXT: dict[str, object] = {
         "Create reusable checks for schedules. Choose a set when creating a schedule; "
         "each schedule keeps its own copy."
     ),
-    "rules.manage": "Manage rule sets…",
     "rules.add_set": "New set",
     "rules.edit_set": "Edit rule set",
     "rules.name": "Set name",
     "rules.rules": "Rules",
     "rules.add_rule": "Add rule",
     "rules.edit_rule": "Edit rule",
-    "rules.done": "Done",
     "rules.delete": "Delete rule set?",
     "rules.delete_confirm": "Delete “{name}”? Existing schedules keep their copies.",
     "rules.rule_set": "Rule set",
@@ -377,6 +372,8 @@ TEXT: dict[str, object] = {
     "settings.hours.hint": (
         "New schedules start from these hours. Changing them here leaves existing schedules alone."
     ),
+    "settings.hours.tab": "Opening hours",
+    "settings.hours.save": "Save hours",
     "settings.hours.saved": "Opening hours saved.",
     "settings.appearance.title": "Appearance and language",
     "settings.appearance.hint": (

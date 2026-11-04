@@ -1,11 +1,13 @@
 import pytest
 from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QApplication
 from sqlalchemy import Engine
 
 from work_scheduler.database.models import Profession
 from work_scheduler.database.session import create_session_factory
+from work_scheduler.i18n import t
 from work_scheduler.services import EmployeeService
-from work_scheduler.ui.employees.employee_delegate import AVATAR, EmployeeDelegate
+from work_scheduler.ui.employees.employee_delegate import AVATAR, GAP, EmployeeDelegate
 from work_scheduler.ui.employees.employees_view import EmployeesView
 from work_scheduler.ui.icons import load_icon
 from work_scheduler.ui.theme import DARK, LIGHT, METRICS
@@ -218,10 +220,109 @@ class TestBadgeColours:
         return view
 
     def test_a_pharmacist_badge_is_tinted(self, two_trades: EmployeesView) -> None:
-        assert self.badge_colour(two_trades, 0) == LIGHT.holiday_surface.upper()
+        assert self.badge_colour(two_trades, 0) == LIGHT.work_surface.upper()
 
     def test_a_technician_badge_is_neutral(self, two_trades: EmployeesView) -> None:
         assert self.badge_colour(two_trades, 1) == LIGHT.surface_active.upper()
 
     def test_the_two_do_not_come_out_the_same(self, two_trades: EmployeesView) -> None:
         assert self.badge_colour(two_trades, 0) != self.badge_colour(two_trades, 1)
+
+
+class TestAvatars:
+    @pytest.fixture
+    def staffed(self, application, service: EmployeeService) -> EmployeesView:
+        service.create("Anna", "Kowalska", Profession.PHARMACIST)
+        gone = service.create("Marek", "Nowak", Profession.TECHNICIAN)
+        service.set_active(gone.id, False)
+
+        view = EmployeesView(service, LIGHT)
+        view.resize(900, 400)
+        view.show()
+        return view
+
+    @staticmethod
+    def avatar_colour(view: EmployeesView, row: int) -> QColor:
+        image = view._table.viewport().grab().toImage()
+        rect = view._table.visualRect(view._proxy.index(row, 0))
+        return QColor(image.pixel(rect.x() + METRICS.space_3 + 2, rect.center().y()))
+
+    @staticmethod
+    def close(found: QColor, expected: str) -> bool:
+        wanted = QColor(expected)
+        return all(
+            abs(a - b) <= 8
+            for a, b in (
+                (found.red(), wanted.red()),
+                (found.green(), wanted.green()),
+                (found.blue(), wanted.blue()),
+            )
+        )
+
+    def test_active_people_get_a_blue_avatar(self, staffed: EmployeesView) -> None:
+        assert self.close(self.avatar_colour(staffed, 0), LIGHT.work_surface)
+
+    def test_inactive_people_get_a_grey_avatar(self, staffed: EmployeesView) -> None:
+        assert self.close(self.avatar_colour(staffed, 1), LIGHT.surface_active)
+
+    def test_avatars_follow_the_theme(self, staffed: EmployeesView) -> None:
+        staffed.apply_palette(DARK)
+
+        assert self.close(self.avatar_colour(staffed, 0), DARK.work_surface)
+
+
+def test_the_add_button_says_what_it_does(view: EmployeesView) -> None:
+    assert view._add.accessibleName() == t("employees.add")
+    assert view._add.property("variant") == "roundPrimary"
+
+
+def test_the_search_field_is_a_capsule(view: EmployeesView) -> None:
+    assert view._search.property("capsule") == "true"
+
+
+def test_the_status_text_clears_the_cards_right_edge(application, service: EmployeeService) -> None:
+    service.create("Anna", "Kowalska", Profession.PHARMACIST)
+    view = EmployeesView(service, LIGHT)
+    view.resize(900, 400)
+    view.show()
+
+    image = view._table.viewport().grab().toImage()
+    rect = view._table.visualRect(view._proxy.index(0, 2))
+    background = image.pixel(rect.right() - 1, rect.y() + 4)
+    inked = [
+        x
+        for x in range(rect.x(), rect.right() + 1)
+        for y in range(rect.y() + 4, rect.bottom() - 4)
+        if image.pixel(x, y) != background
+    ]
+    assert image.width() - 1 - max(inked) >= 12
+
+
+def test_a_selected_row_still_shows_the_avatar_disc(application, service: EmployeeService) -> None:
+    service.create("Anna", "Kowalska", Profession.PHARMACIST)
+    view = EmployeesView(service, LIGHT)
+    view.resize(900, 400)
+    view.show()
+    view._table.selectRow(0)
+    QApplication.processEvents()
+
+    image = view._table.viewport().grab().toImage()
+    rect = view._table.visualRect(view._proxy.index(0, 0))
+    background = image.pixelColor(rect.right() - 2, rect.center().y())
+    disc = image.pixelColor(rect.x() + GAP + 4, rect.center().y())
+    assert disc != background
+
+
+def test_the_search_placeholder_fits_at_the_narrowest_window(
+    application, service: EmployeeService
+) -> None:
+    view = EmployeesView(service, LIGHT)
+    # The window is 880 wide; the sidebar and the page margins take the rest.
+    view.resize(880 - METRICS.sidebar_width - 2 * METRICS.window_inset, 560)
+    view.show()
+    QApplication.processEvents()
+
+    placeholder = view._search.placeholderText()
+    needed = view._search.fontMetrics().horizontalAdvance(placeholder)
+    assert view._search.width() >= needed + 2 * METRICS.space_4
+    assert view._show_inactive.geometry().right() <= view.width()

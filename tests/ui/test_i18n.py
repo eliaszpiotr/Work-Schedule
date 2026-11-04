@@ -169,12 +169,12 @@ class TestLiveLanguageSwitch:
             window.set_language(Language.EN)
 
             assert window._navigation.item(0).text() == "Schedules"
-            assert window._employees._add.text() == "Add an employee"
+            assert window._employees._add.accessibleName() == "Add an employee"
         finally:
             window.set_language(Language.PL)
 
         assert window._navigation.item(0).text() == "Grafiki"
-        assert window._employees._add.text() == "Dodaj pracownika"
+        assert window._employees._add.accessibleName() == "Dodaj pracownika"
 
     def test_the_screen_you_were_on_is_the_screen_you_come_back_to(self, application) -> None:  # noqa: ANN001
         _, window = application

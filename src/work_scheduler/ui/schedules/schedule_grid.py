@@ -5,12 +5,22 @@ from PySide6.QtCore import (
     QModelIndex,
     QObject,
     QPoint,
+    QRect,
     QRectF,
     Qt,
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QFont,
+    QFontMetrics,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QRegion,
+)
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QAbstractItemView,
@@ -57,6 +67,7 @@ from work_scheduler.ui.components import (
     secondary_button,
     set_button_icon,
 )
+from work_scheduler.ui.icons import load_icon
 from work_scheduler.ui.schedules.finalize_dialog import FinalizeDialog, Outcome
 from work_scheduler.ui.schedules.schedule_card import status_badge
 from work_scheduler.ui.schedules.schedule_edit_dialog import (
@@ -65,7 +76,7 @@ from work_scheduler.ui.schedules.schedule_edit_dialog import (
     ScheduleTeamDialog,
 )
 from work_scheduler.ui.settings.rule_sets_dialog import RuleSetPickerDialog
-from work_scheduler.ui.theme import METRICS, Palette
+from work_scheduler.ui.theme import METRICS, Palette, pill_colours
 
 
 def totals_label() -> str:
@@ -84,6 +95,9 @@ def absence_help_text(language: Language | None = None) -> str:
 
 
 STATUS_LINGER_MS = 5000
+
+# "work", a stored absence code (never the translated one), or None for an empty cell.
+CELL_KIND_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 class ScheduleGridModel(QAbstractTableModel):
@@ -192,6 +206,9 @@ class ScheduleGridModel(QAbstractTableModel):
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             return format_range(*hours) if hours else display_absence(absence) if absence else ""
 
+        if role == CELL_KIND_ROLE:
+            return "work" if hours else absence or None
+
         if role == Qt.ItemDataRole.ToolTipRole and absence:
             return f"{display_absence(absence)} — {t(f'absence.{absence}')}"
 
@@ -199,9 +216,9 @@ class ScheduleGridModel(QAbstractTableModel):
             # A breach of the opening hours belongs to one cell, so it wins there; a day
             # with no pharmacist colours its whole row; then holidays; grey last.
             if hours and self._outside_opening(info, hours):
-                return QColor(self._palette.warning_surface)
-            if info.day in self._uncovered:
                 return QColor(self._palette.danger_surface)
+            if info.day in self._uncovered:
+                return QColor(self._palette.warning_surface)
             if info.holiday:
                 return QColor(self._palette.holiday_surface)
             if info.closed:
@@ -312,7 +329,7 @@ class ScheduleGridModel(QAbstractTableModel):
 
 
 class ShiftDelegate(QStyledItemDelegate):
-    """Draws a cell from end to end: fill, rule, text, and the cursor outline.
+    """Draws a cell from end to end: fill, bottom rule, the pill and the cursor ring.
 
     Nothing is left to the stylesheet. Qt's own grid lines and a stylesheet border react
     to state — selected, hovered, first, last — and the table ended up ruled unevenly.
@@ -322,13 +339,11 @@ class ShiftDelegate(QStyledItemDelegate):
 
     def __init__(
         self,
-        model: ScheduleGridModel,
         view: QTableView,
         palette: Palette,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
-        self._model = model
         self._view = view
         self._palette = palette
 
@@ -338,42 +353,52 @@ class ShiftDelegate(QStyledItemDelegate):
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
         painter.save()
         painter.setClipRect(option.rect)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         colour = index.data(Qt.ItemDataRole.BackgroundRole)
-        painter.fillRect(option.rect, QColor(colour or self._palette.background))
+        painter.fillRect(option.rect, QColor(colour or self._palette.elevated))
 
-        self._draw_rules(painter, option, index)
-        self._draw_text(painter, option, index)
+        painter.setPen(QPen(QColor(self._palette.border), 1))
+        painter.drawLine(option.rect.bottomLeft(), option.rect.bottomRight())
+
+        pill = self._pill_rect(option.rect)
+        colours = pill_colours(index.data(CELL_KIND_ROLE), self._palette)
+        if colours is not None:
+            self._draw_pill(painter, pill, colours, index.data(Qt.ItemDataRole.DisplayRole))
         if index == self._view.currentIndex():
-            self._draw_cursor(painter, option)
+            self._draw_cursor(painter, pill)
 
         painter.restore()
 
-    def _draw_rules(
-        self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
-    ) -> None:
-        """Internal rules only; the card supplies the outside edge."""
-        painter.setPen(QPen(QColor(self._palette.border), 1))
-        right, bottom = option.rect.right(), option.rect.bottom()
-        if index.column() < self._model.columnCount() - 1:
-            painter.drawLine(right, option.rect.top(), right, bottom)
-        painter.drawLine(option.rect.left(), bottom, right, bottom)
+    @staticmethod
+    def _pill_rect(cell: QRect) -> QRectF:
+        inset = METRICS.pill_inset
+        box = cell.adjusted(inset, inset, -inset, -inset)
+        height = min(METRICS.pill_height, cell.height() - 2 * inset)
+        top = cell.top() + (cell.height() - height) / 2
+        return QRectF(box.left(), top, box.width(), height)
 
-    def _draw_text(
-        self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
+    def _draw_pill(
+        self, painter: QPainter, pill: QRectF, colours: tuple[str, str], text: str | None
     ) -> None:
-        text = index.data(Qt.ItemDataRole.DisplayRole)
+        fill, ink = colours
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(fill))
+        painter.drawRoundedRect(pill, METRICS.pill_radius, METRICS.pill_radius)
         if not text:
             return
-        painter.setPen(QColor(self._palette.text_primary))
-        painter.drawText(option.rect, Qt.AlignmentFlag.AlignCenter, text)
+        painter.setPen(QColor(ink))
+        elided = painter.fontMetrics().elidedText(
+            text, Qt.TextElideMode.ElideRight, int(pill.width()) - 8
+        )
+        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, elided)
 
-    def _draw_cursor(self, painter: QPainter, option: QStyleOptionViewItem) -> None:
-        """The cell you are on, outlined inside its own bounds so the rules stay put."""
-        pen = QPen(QColor(self._palette.accent), 2)
-        pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
-        painter.setPen(pen)
-        painter.drawRect(option.rect.adjusted(1, 1, -2, -2))
+    def _draw_cursor(self, painter: QPainter, pill: QRectF) -> None:
+        """The cell you are on: a rounded ring around where its pill sits."""
+        painter.setPen(QPen(QColor(self._palette.accent), 2))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        radius = METRICS.pill_radius + 2
+        painter.drawRoundedRect(pill.adjusted(-1, -1, 1, 1), radius, radius)
 
     def createEditor(  # noqa: N802 - Qt API
         self, parent: QWidget, option: object, index: QModelIndex
@@ -386,8 +411,8 @@ class ShiftDelegate(QStyledItemDelegate):
     def updateEditorGeometry(  # noqa: N802 - Qt API
         self, editor: QWidget, option: QStyleOptionViewItem, index: QModelIndex
     ) -> None:
-        # Fills the cell exactly; a smaller editor made the row jump while typing.
-        editor.setGeometry(option.rect)
+        # Over the pill, where the cursor ring is, so opening the editor changes nothing.
+        editor.setGeometry(self._pill_rect(option.rect).toRect())
 
 
 class LaneHeader(QHeaderView):
@@ -419,11 +444,9 @@ class LaneHeader(QHeaderView):
             return
 
         painter.save()
-        painter.fillRect(rect, QColor(self._palette.surface))
+        painter.fillRect(rect, QColor(self._palette.elevated))
 
         painter.setPen(QPen(QColor(self._palette.border), 1))
-        if index < len(lanes) - 1:
-            painter.drawLine(rect.topRight(), rect.bottomRight())
         painter.drawLine(rect.bottomLeft(), rect.bottomRight())
 
         lane = lanes[index]
@@ -431,14 +454,26 @@ class LaneHeader(QHeaderView):
         name = QRectF(box.x(), box.y() + 8, box.width(), box.height() * 0.44)
         trade = QRectF(box.x(), box.center().y() + 1, box.width(), box.height() * 0.4)
 
+        name_font = self._font(12, QFont.Weight.Medium)
         painter.setPen(QPen(QColor(self._palette.text_primary)))
-        painter.setFont(self._font(12.5, QFont.Weight.DemiBold))
-        painter.drawText(name, Qt.AlignmentFlag.AlignCenter, lane.name)
+        painter.setFont(name_font)
+        painter.drawText(
+            name, Qt.AlignmentFlag.AlignCenter, self._elided(lane.name, name_font, rect.width())
+        )
 
+        trade_font = self._font(10, QFont.Weight.Normal)
         painter.setPen(QPen(QColor(self._palette.text_muted)))
-        painter.setFont(self._font(10, QFont.Weight.Normal))
-        painter.drawText(trade, Qt.AlignmentFlag.AlignCenter, trade_name(lane.profession))
+        painter.setFont(trade_font)
+        painter.drawText(
+            trade,
+            Qt.AlignmentFlag.AlignCenter,
+            self._elided(trade_name(lane.profession), trade_font, rect.width()),
+        )
         painter.restore()
+
+    @staticmethod
+    def _elided(text: str, font: QFont, width: int) -> str:
+        return QFontMetrics(font).elidedText(text, Qt.TextElideMode.ElideRight, width - 12)
 
     @staticmethod
     def _font(size: float, weight: QFont.Weight) -> QFont:
@@ -446,6 +481,17 @@ class LaneHeader(QHeaderView):
         font.setPointSizeF(size)
         font.setWeight(weight)
         return font
+
+
+class RoundedCard(QFrame):
+    """A card whose square children are clipped to its rounded corners."""
+
+    def resizeEvent(self, event) -> None:  # noqa: N802, ANN001 - Qt API
+        super().resizeEvent(event)
+        path = QPainterPath()
+        radius = METRICS.radius_lg
+        path.addRoundedRect(QRectF(self.rect()), radius, radius)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
 
 class TotalsBar(QWidget):
@@ -492,18 +538,17 @@ class TotalsBar(QWidget):
     def paintEvent(self, event) -> None:  # noqa: N802, ANN001 - Qt API
         painter = QPainter(self)
         painter.setClipRect(event.rect())
-        painter.fillRect(self.rect(), QColor(self._palette.surface))
+        painter.fillRect(self.rect(), QColor(self._palette.elevated))
 
-        painter.setPen(QPen(QColor(self._palette.border_strong), 1))
+        painter.setPen(QPen(QColor(self._palette.border), 1))
         painter.drawLine(self.rect().topLeft(), self.rect().topRight())
 
         viewport_left = self._table.viewport().geometry().left()
-        painter.setPen(QPen(QColor(self._palette.border), 1))
-        painter.drawLine(viewport_left - 1, 0, viewport_left - 1, self.height() - 1)
+        painter.drawLine(viewport_left - 1, 0, viewport_left - 1, self.height())
 
         label = QRectF(0, 0, viewport_left - 1, self.height())
         font = QFont(self.font())
-        font.setWeight(QFont.Weight.DemiBold)
+        font.setWeight(QFont.Weight.Medium)
         painter.setFont(font)
         painter.setPen(QColor(self._palette.text_muted))
         painter.drawText(
@@ -517,10 +562,6 @@ class TotalsBar(QWidget):
         for column, minutes in enumerate(totals):
             cell = self.column_rect(column)
             painter.drawText(cell, Qt.AlignmentFlag.AlignCenter, format_hours(minutes))
-            if column < len(totals) - 1:
-                painter.setPen(QPen(QColor(self._palette.border), 1))
-                painter.drawLine(cell.right(), 0, cell.right(), self.height() - 1)
-                painter.setPen(QColor(self._palette.text_primary))
 
 
 class ScheduleGridView(QWidget):
@@ -548,15 +589,21 @@ class ScheduleGridView(QWidget):
         self._table = QTableView()
         # Built here rather than in the body: the table is configured first and asks
         # the card for its height cap while doing it.
-        self._card = QFrame()
+        self._card = RoundedCard()
         self._back = icon_button("chevron-left", t("grid.back_to_list"), palette)
+        self._back.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self._title = PlainLabel()
         self._status = PlainLabel()
         self._finish = primary_button(t("grid.finish"), "check", palette)
-        self._edit_details = secondary_button(t("grid.details.action"))
+        self._edit_details = QAction(t("grid.details.action"), self)
         self._edit_team = secondary_button(t("grid.edit_team"))
+        set_button_icon(self._edit_team, "users", palette.text_primary)
         self._edit_team.setEnabled(employees is not None)
-        self._edit_rules = secondary_button(t("rules.rule_set"))
+        self._edit_rules = QAction(t("rules.rule_set"), self)
+        self._more = icon_button("ellipsis", t("common.more"), palette)
+        self._more_menu = QMenu(self)
+        self._more_menu.addAction(self._edit_details)
+        self._more_menu.addAction(self._edit_rules)
 
         self._build()
 
@@ -604,6 +651,8 @@ class ScheduleGridView(QWidget):
         self._status.hide()
         self._model.rejected.connect(self._complain)
         self._model.reopened.connect(self._note_reopened)
+        # Without this the first Tab-able control, the back button, takes focus and its ring.
+        self._table.setFocus()
 
     def _toolbar(self) -> QWidget:
         bar = QFrame()
@@ -612,7 +661,7 @@ class ScheduleGridView(QWidget):
         bar.setFixedHeight(METRICS.toolbar_height + METRICS.space_6)
 
         self._back.clicked.connect(self.closed.emit)
-        self._title.setObjectName("sectionTitle")
+        self._title.setObjectName("pageTitle")
         self._title.setText(self._schedule.name)
 
         self._badge = Badge(*status_badge(self._schedule.status))
@@ -643,18 +692,21 @@ class ScheduleGridView(QWidget):
         row.setContentsMargins(METRICS.space_4, 0, METRICS.space_6, 0)
         row.setSpacing(METRICS.space_3)
         self._finish.clicked.connect(self.finish_schedule)
-        self._edit_details.clicked.connect(self.edit_details)
+        self._edit_details.triggered.connect(self.edit_details)
         self._edit_team.clicked.connect(self.edit_team)
-        self._edit_rules.clicked.connect(self.change_rule_set)
+        self._edit_rules.triggered.connect(self.change_rule_set)
+        self._more.clicked.connect(self._open_more_menu)
 
         row.addWidget(self._back)
         row.addLayout(stack)
         row.addStretch()
-        row.addWidget(self._edit_details)
         row.addWidget(self._edit_team)
-        row.addWidget(self._edit_rules)
+        row.addWidget(self._more)
         row.addWidget(self._finish)
         return bar
+
+    def _open_more_menu(self) -> None:
+        self._more_menu.exec(self._more.mapToGlobal(QPoint(0, self._more.height())))
 
     def _refresh_heading(self) -> None:
         self._title.setText(self._schedule.name)
@@ -695,8 +747,8 @@ class ScheduleGridView(QWidget):
         row.setSpacing(METRICS.space_4)
 
         for colour, text in (
-            (self._palette.danger_surface, t("grid.legend.no_pharmacist")),
-            (self._palette.warning_surface, t("grid.legend.outside")),
+            (self._palette.warning_surface, t("grid.legend.no_pharmacist")),
+            (self._palette.danger_surface, t("grid.legend.outside")),
             (self._palette.holiday_surface, t("grid.legend.holiday")),
             (self._palette.surface_active, t("grid.closed")),
         ):
@@ -759,7 +811,7 @@ class ScheduleGridView(QWidget):
         # needs every cell to look the same. Its delegate draws the lot instead.
         self._table.setProperty("role", "grid")
         self._table.setModel(self._model)
-        self._delegate = ShiftDelegate(self._model, self._table, self._palette, self)
+        self._delegate = ShiftDelegate(self._table, self._palette, self)
         self._table.setItemDelegate(self._delegate)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
@@ -813,8 +865,10 @@ class ScheduleGridView(QWidget):
         self._lane_header.set_palette(palette)
         self._totals_bar.set_palette(palette)
         self._style_absence_help()
-        self._back.setIcon(self._back.icon())
+        self._back.setIcon(load_icon("chevron-left", palette.text_secondary))
+        self._more.setIcon(load_icon("ellipsis", palette.text_secondary))
         set_button_icon(self._finish, "check", palette.on_accent)
+        set_button_icon(self._edit_team, "users", palette.text_primary)
 
     def _complain(self, message: str) -> None:
         """Shown briefly and then gone, so nothing is left standing under the grid."""

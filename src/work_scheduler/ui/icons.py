@@ -1,6 +1,7 @@
 import hashlib
 from functools import lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QByteArray, QRectF, QSize, Qt
 from PySide6.QtGui import QIcon, QPainter, QPixmap
@@ -8,6 +9,9 @@ from PySide6.QtSvg import QSvgRenderer
 
 from work_scheduler.privacy import create_data_directory
 from work_scheduler.ui.resources import ICON_CACHE_DIR, ICONS_DIR
+
+if TYPE_CHECKING:
+    from work_scheduler.ui.theme import Palette
 
 DEFAULT_SIZE = 18
 RENDER_SCALE = 2  # rendered larger, then marked as high-dpi, so edges stay crisp
@@ -29,8 +33,7 @@ def _markup(name: str, color: str) -> str:
     return path.read_text(encoding="utf-8").replace("currentColor", color)
 
 
-@lru_cache(maxsize=256)
-def load_icon(name: str, color: str, size: int = DEFAULT_SIZE) -> QIcon:
+def _pixmap(name: str, color: str, size: int) -> QPixmap:
     renderer = QSvgRenderer(QByteArray(_markup(name, color).encode("utf-8")))
 
     pixmap = QPixmap(QSize(size, size) * RENDER_SCALE)
@@ -41,7 +44,25 @@ def load_icon(name: str, color: str, size: int = DEFAULT_SIZE) -> QIcon:
     painter.end()
 
     pixmap.setDevicePixelRatio(RENDER_SCALE)
-    return QIcon(pixmap)
+    return pixmap
+
+
+@lru_cache(maxsize=256)
+def load_icon(name: str, color: str, size: int = DEFAULT_SIZE) -> QIcon:
+    return QIcon(_pixmap(name, color, size))
+
+
+@lru_cache(maxsize=64)
+def _two_tone_icon(name: str, rest: str, selected: str, size: int) -> QIcon:
+    icon = QIcon()
+    icon.addPixmap(_pixmap(name, rest, size), QIcon.Mode.Normal)
+    icon.addPixmap(_pixmap(name, selected, size), QIcon.Mode.Selected)
+    return icon
+
+
+def nav_icon(name: str, palette: "Palette", size: int = DEFAULT_SIZE) -> QIcon:
+    """Accent at rest, the on-accent colour once the row is the selected capsule."""
+    return _two_tone_icon(name, palette.accent, palette.on_accent, size)
 
 
 @lru_cache(maxsize=64)

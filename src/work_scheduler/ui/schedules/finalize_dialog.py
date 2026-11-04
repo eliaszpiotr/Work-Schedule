@@ -111,6 +111,9 @@ class FinalizeDialog(QDialog):
         column.addStretch()
 
         area = QScrollArea()
+        # Named so the transparent scroll-area rule reaches it; unstyled it paints the
+        # platform's grey base colour behind the findings in both modes.
+        area.setObjectName("cardList")
         area.setWidget(body)
         area.setWidgetResizable(True)
         area.setFrameShape(QScrollArea.Shape.NoFrame)

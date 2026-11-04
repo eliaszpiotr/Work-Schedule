@@ -1,5 +1,5 @@
 from PySide6.QtCore import QModelIndex, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen
 from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
 from work_scheduler.i18n import t
@@ -15,6 +15,7 @@ BADGE_HEIGHT = 21
 BADGE_PADDING = 9
 DOT = 7
 GAP = METRICS.space_3
+STATUS_MARGIN = METRICS.space_5
 
 
 class EmployeeDelegate(QStyledItemDelegate):
@@ -68,7 +69,8 @@ class EmployeeDelegate(QStyledItemDelegate):
     def _draw_person(self, painter: QPainter, box: QRectF, name: str, *, active: bool) -> None:
         circle = QRectF(box.x() + GAP, box.center().y() - AVATAR / 2, AVATAR, AVATAR)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(self._palette.surface_active))
+        fill = self._palette.work_surface if active else self._palette.surface_active
+        painter.setBrush(QColor(fill))
         painter.drawEllipse(circle)
 
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -76,7 +78,7 @@ class EmployeeDelegate(QStyledItemDelegate):
             painter,
             circle,
             initials(name),
-            self._palette.text_secondary,
+            self._palette.work_ink if active else self._palette.text_muted,
             size=10.5,
             weight=QFont.Weight.DemiBold,
             align=Qt.AlignmentFlag.AlignCenter,
@@ -138,4 +140,12 @@ class EmployeeDelegate(QStyledItemDelegate):
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex):  # noqa: N802, ANN201
         hint = super().sizeHint(option, index)
         hint.setHeight(METRICS.table_row_height + METRICS.space_3)
+        if index.column() == STATUS_COLUMN:
+            # Dot, gap and label, then room to breathe before the card's edge.
+            metrics = QFontMetricsF(self._font(13, QFont.Weight.Normal))
+            text = index.data() or ""
+            hint.setWidth(
+                int(GAP + DOT + METRICS.space_2 + metrics.horizontalAdvance(text) + 0.999)
+                + STATUS_MARGIN
+            )
         return hint

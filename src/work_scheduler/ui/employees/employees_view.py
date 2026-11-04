@@ -28,7 +28,7 @@ from work_scheduler.ui.components import (
     EmptyState,
     PageHeader,
     confirm_destructive,
-    primary_button,
+    round_icon_button,
     set_button_icon,
 )
 from work_scheduler.ui.employees.employee_delegate import PROFESSION_ROLE, EmployeeDelegate
@@ -137,7 +137,7 @@ class EmployeesView(QWidget):
         self._proxy.setFilterKeyColumn(-1)
         self._proxy.setSortRole(SORT_ROLE)
 
-        self._add = primary_button(t("employees.add"), "plus", palette)
+        self._add = round_icon_button("plus", t("employees.add"), palette)
         self._search = QLineEdit()
         self._show_inactive = QCheckBox(t("employees.show_inactive"))
         self._table = QTableView()
@@ -186,6 +186,7 @@ class EmployeesView(QWidget):
         self._search.setPlaceholderText(t("employees.search.placeholder"))
         self._search.setClearButtonEnabled(True)
         self._search.setAccessibleName(t("employees.search.label"))
+        self._search.setProperty("capsule", "true")
         self._search.setMaximumWidth(320)
         self._search.textChanged.connect(self._proxy.setFilterFixedString)
 
@@ -194,8 +195,8 @@ class EmployeesView(QWidget):
 
         row = QHBoxLayout()
         row.setSpacing(METRICS.space_3)
-        row.addWidget(self._search)
-        row.addStretch()
+        row.addWidget(self._search, stretch=1)
+        row.addStretch(0)
         row.addWidget(self._show_inactive)
         return row
 

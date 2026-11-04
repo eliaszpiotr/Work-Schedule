@@ -1,8 +1,9 @@
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QIcon
 
 from work_scheduler import __version__
 from work_scheduler.config import AppConfig
-from work_scheduler.ui.theme import DARK, LIGHT, METRICS, stylesheet
+from work_scheduler.ui.theme import DARK, LIGHT, METRICS, ThemeMode, stylesheet
 
 
 def test_default_configuration() -> None:
@@ -26,6 +27,15 @@ def test_main_window_opens(application) -> None:
     assert window.isVisible()
     assert window.windowTitle() == "Work Scheduler"
     assert window.centralWidget() is not None
+
+
+def test_no_focus_ring_on_open(application) -> None:
+    app, window = application
+    window.show()
+    app.processEvents()
+
+    assert window.focusWidget() is not window._collapse
+    assert window._collapse.focusPolicy() == Qt.FocusPolicy.TabFocus
 
 
 def test_a_theme_change_reaches_the_employees_screen(application) -> None:
@@ -152,4 +162,103 @@ class TestSidebar:
         icon = item.center().x() + window._navigation.geometry().x()
 
         assert abs(toggle - icon) <= 1
+        window.set_sidebar_collapsed(False)
+
+
+def _bounds(image, colour: str, inside=None) -> tuple[int, int, int, int] | None:
+    """Box around every pixel within 8 of a colour, optionally inside another box."""
+    target = QColor(colour)
+    left, top, right, bottom = inside or (0, 0, image.width() - 1, image.height() - 1)
+    hits = [
+        (x, y)
+        for y in range(top, bottom + 1)
+        for x in range(left, right + 1)
+        if all(
+            abs(a - b) <= 8
+            for a, b in zip(
+                image.pixelColor(x, y).getRgb()[:3], target.getRgb()[:3], strict=True
+            )
+        )
+    ]
+    if not hits:
+        return None
+    xs, ys = [x for x, _ in hits], [y for _, y in hits]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def test_the_collapsed_highlight_is_a_centred_square(application) -> None:
+    app, window = application
+    window.show()
+    window.set_sidebar_collapsed(True)
+    window._navigation.setCurrentRow(2)
+    app.processEvents()
+    try:
+        navigation = window._navigation
+        image = navigation.viewport().grab().toImage()
+        scale = image.devicePixelRatio()
+        palette = window._theme.palette
+        rect = navigation.visualItemRect(navigation.item(2))
+        edges = (0, rect.top(), image.width() / scale - 1, rect.bottom())
+        row = tuple(round(v * scale) for v in edges)
+
+        square = _bounds(image, palette.accent, row)
+        assert square is not None
+        left, top, right, bottom = square
+        centre = image.width() / 2
+        assert abs((left + right + 1) / 2 - centre) <= scale
+        assert abs((right - left) - (bottom - top)) <= scale
+
+        glyph = _bounds(image, palette.on_accent, square)
+        assert glyph is not None
+        assert abs((glyph[0] + glyph[2] + 1) / 2 - centre) <= scale
+    finally:
+        window._navigation.setCurrentRow(0)
+        window.set_sidebar_collapsed(False)
+
+
+def test_the_sidebar_floats(application) -> None:
+    _, window = application
+    inset = METRICS.window_inset
+    margins = window.centralWidget().layout().contentsMargins()
+
+    assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (inset,) * 4
+    block = stylesheet(LIGHT, "x").split("QFrame#sidebar {")[1].split("}")[0]
+    assert "border-radius: 16px" in block
+    assert "border-right" not in block
+
+
+def test_nav_icons_follow_the_theme(application) -> None:
+    app, window = application
+    original = window._theme.mode
+    window._theme.set_mode(ThemeMode.DARK, app)
+    try:
+        image = window._navigation.item(0).icon().pixmap(18, mode=QIcon.Mode.Normal).toImage()
+    finally:
+        window._theme.set_mode(original, app)
+    ratio = image.devicePixelRatio()
+    # The stroke has holes, so look for the accent anywhere rather than at one pixel.
+    seen = [
+        image.pixelColor(x, y)
+        for x in range(image.width())
+        for y in range(image.height())
+        if image.pixelColor(x, y).alpha() > 240
+    ]
+    target = DARK.accent.lstrip("#")
+    want = tuple(int(target[i : i + 2], 16) for i in (0, 2, 4))
+    assert ratio >= 1
+    assert any(
+        all(abs(c - w) <= 8 for c, w in zip((q.red(), q.green(), q.blue()), want, strict=True))
+        for q in seen
+    )
+
+
+def test_expanded_nav_labels_sit_beside_their_icons(application) -> None:
+    _, window = application
+    window.set_sidebar_collapsed(False)
+    assert window._navigation.item(0).textAlignment() & Qt.AlignmentFlag.AlignLeft
+
+    window.set_sidebar_collapsed(True)
+    try:
+        assert window._navigation.item(0).textAlignment() & Qt.AlignmentFlag.AlignHCenter
+    finally:
         window.set_sidebar_collapsed(False)

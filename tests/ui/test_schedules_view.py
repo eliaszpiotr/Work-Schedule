@@ -3,7 +3,7 @@ from datetime import date, time
 import pytest
 from PySide6.QtCore import QDate, QLocale, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import QLabel, QTableView
+from PySide6.QtWidgets import QLabel, QPushButton, QTableView
 from sqlalchemy import Engine
 
 from work_scheduler.database.models import Profession, ScheduleStatus
@@ -392,3 +392,15 @@ class TestPeoplePicker:
 
     def test_a_row_is_tall_enough_for_an_avatar(self) -> None:
         assert METRICS.picker_row_height > PICKER_AVATAR
+
+
+def test_an_empty_screen_has_exactly_one_blue_button(view: SchedulesView) -> None:
+    view.resize(900, 600)
+    view.show()
+
+    blue = [
+        button
+        for button in view.findChildren(QPushButton)
+        if button.property("variant") == "primary" and button.isVisible()
+    ]
+    assert len(blue) == 1

@@ -2,11 +2,11 @@ from dataclasses import dataclass
 from datetime import time
 
 from PySide6.QtCore import Qt, QTime
-from PySide6.QtWidgets import QCheckBox, QGridLayout, QTimeEdit, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QTimeEdit, QVBoxLayout, QWidget
 
 from work_scheduler.i18n import t, weekday_name
 from work_scheduler.services import DEFAULT_WEEK, DayHours
-from work_scheduler.ui.components import PlainLabel
+from work_scheduler.ui.components import PlainLabel, Switch, inset_divider
 from work_scheduler.ui.theme import METRICS
 
 TIME_FORMAT = "HH:mm"
@@ -22,63 +22,85 @@ def _from_qtime(value: QTime) -> time:
 
 @dataclass(slots=True)
 class DayRow:
-    """The three controls describing one weekday, kept together for the tests."""
+    """The controls describing one weekday, kept together for the tests."""
 
-    open_switch: QCheckBox
+    open_switch: Switch
     opens: QTimeEdit
     closes: QTimeEdit
+    closed_label: PlainLabel
 
 
 class OpeningHoursEditor(QWidget):
-    """Seven rows of opening times. Shared by the settings screen and the wizard."""
+    """Seven rows of opening times. Shared by the settings screen and the wizard.
 
-    def __init__(self, week: list[DayHours] | None = None) -> None:
+    ``inset`` pads each row and starts the dividers where the text does; the settings
+    card asks for it, the wizard leaves it at zero to line up with its own form.
+    """
+
+    def __init__(self, week: list[DayHours] | None = None, *, inset: int = 0) -> None:
         super().__init__()
         self.rows: list[DayRow] = []
+        self._hour_parts: list[tuple[QWidget, ...]] = []
 
-        layout = QGridLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setHorizontalSpacing(METRICS.space_3)
-        layout.setVerticalSpacing(METRICS.space_2)
-        layout.setColumnStretch(4, 1)
+        layout.setSpacing(0)
 
         for weekday in range(7):
-            name = weekday_name(weekday)
-            self.rows.append(self._build_row(layout, weekday, name))
+            if weekday:
+                layout.addWidget(inset_divider(inset))
+            self.rows.append(self._build_row(layout, weekday_name(weekday), inset))
 
         self.set_week(list(week or DEFAULT_WEEK))
 
-    def _build_row(self, layout: QGridLayout, weekday: int, name: str) -> DayRow:
+    def _build_row(self, layout: QVBoxLayout, name: str, inset: int) -> DayRow:
+        line = QWidget()
+        row = QHBoxLayout(line)
+        row.setContentsMargins(inset, METRICS.space_2, inset, METRICS.space_2)
+        row.setSpacing(METRICS.space_3)
+
         label = PlainLabel(name.capitalize())
         label.setMinimumWidth(METRICS.weekday_label_width)
-
-        open_switch = QCheckBox(t("hours.open_suffix").strip())
-        open_switch.setAccessibleName(f"{name}{t('hours.open_suffix')}")
+        open_switch = Switch(f"{name}{t('hours.open_suffix')}")
 
         opens, closes = QTimeEdit(), QTimeEdit()
         for field, role in ((opens, t("wizard.from")), (closes, t("hours.close_label"))):
             field.setDisplayFormat(TIME_FORMAT)
             field.setAccessibleName(f"{name} {role}")
             field.setFixedWidth(METRICS.time_field_width)
-
         separator = PlainLabel("–")
         separator.setObjectName("mutedText")
+        closed = PlainLabel(t("grid.closed"))
+        closed.setObjectName("mutedText")
 
-        open_switch.toggled.connect(opens.setEnabled)
-        open_switch.toggled.connect(closes.setEnabled)
-        open_switch.toggled.connect(separator.setEnabled)
+        # A closed day says so in words; empty, greyed time fields only look broken.
+        for widget in (opens, separator, closes):
+            open_switch.toggled.connect(widget.setEnabled)
+            open_switch.toggled.connect(widget.setVisible)
+        open_switch.toggled.connect(lambda on: closed.setVisible(not on))
 
-        layout.addWidget(label, weekday, 0)
-        layout.addWidget(open_switch, weekday, 1)
-        layout.addWidget(opens, weekday, 2)
-        layout.addWidget(separator, weekday, 3, alignment=Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(closes, weekday, 4, alignment=Qt.AlignmentFlag.AlignLeft)
-        return DayRow(open_switch, opens, closes)
+        row.addWidget(label)
+        row.addWidget(open_switch, alignment=Qt.AlignmentFlag.AlignVCenter)
+        row.addStretch(1)
+        row.addWidget(closed)
+        row.addWidget(opens)
+        row.addWidget(separator)
+        row.addWidget(closes)
+        # Holds its height when the fields hide, so closing a day does not shift the rows.
+        line.setMinimumHeight(opens.sizeHint().height() + 2 * METRICS.space_2)
+        layout.addWidget(line)
+        self._hour_parts.append((opens, separator, closes))
+        return DayRow(open_switch, opens, closes, closed)
 
     def set_week(self, week: list[DayHours]) -> None:
         for day in sorted(week, key=lambda day: day.weekday):
             row = self.rows[day.weekday]
             row.open_switch.setChecked(not day.closed)
+            # toggled does not fire when the state is already right; sync explicitly.
+            for widget in self._hour_parts[day.weekday]:
+                widget.setEnabled(not day.closed)
+                widget.setVisible(not day.closed)
+            row.closed_label.setVisible(day.closed)
             row.opens.setTime(_to_qtime(day.opens))
             row.closes.setTime(_to_qtime(day.closes) if day.closes else QTime(20, 0))
 
